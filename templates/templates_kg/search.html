@@ -1,0 +1,57 @@
+{% extends "templates_kg/base.html" %}{% block styles %}{{ super() }} 
+<link 
+  rel="stylesheet" 
+  href="{{ url_for('static', filename='css/styles_kg_search.css') }}"
+/>
+{% endblock %}
+
+{% block content %}
+    {{ super() }}
+
+    
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">您的位置</li>
+        <li class="breadcrumb-item active">
+          <a href='{{url_for('dashboard.dashboard_application')}}'>
+          应用程序
+          </a>
+        </li>
+        <li class="breadcrumb-item active"> 
+          <a href='{{url_for('dashboard.dashboard_kg')}}'>
+          知识图谱
+          </a>
+        </li>
+        <li class="breadcrumb-item active">查询</li>
+    </ol>
+
+
+    <!-- 查询表单 -->
+    <div class="query-container">
+        <div class="query-title">知识图谱查询</div>
+        <form action="#" id="query-form">
+            <input type="text" id="query-input" placeholder="请输入查询问题" autocomplete="off">
+            <button type="submit" id="query-button">查询</button>
+        </form>
+    </div>
+
+    <!-- 消息容器，默认内容为空 -->
+    <div id="message-container" class="alert alert-danger" style="display: none; padding: 10px; margin: 10px 0; border-radius: 5px; border: 1px solid #f5c6cb; background-color: #f8d7da; color: #721c24;">
+        {{ message if message else '' }}
+    </div>
+
+    <!-- 结果容器 -->
+    <div id="result-container" style="margin-top: 20px;">
+        <div id="query-result"></div>  <!-- 显示文本查询结果 -->
+        <div id="neo4j-graph" style="width: 100%; height: 500px; display: none;  border: 1px solid lightgray; font: 22pt arial;"></div>  <!-- 显示图形化查询结果 -->
+    </div>
+
+    <script src="{{ url_for('static', filename='js/neovis.js') }}"></script>
+
+    <!-- 动态注入查询URL -->
+    <script>const queryUrl = "{{ url_for('search.kg_search') }}";</script>
+
+   
+    <script src="{{ url_for('static', filename='js/kg/kg_search.js') }}"></script>
+   
+
+{% endblock %}
