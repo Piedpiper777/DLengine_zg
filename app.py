@@ -18,4 +18,10 @@ def before_request():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    print("🚀 启动Flask应用...")
+    print(f"📡 监听端口: 5001")
+    
+    # 其他调试输出...
+    
+    # 关闭debug模式，避免自动重启
+    app.run(host='0.0.0.0', port=5001, debug=False)

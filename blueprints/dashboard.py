@@ -98,7 +98,7 @@ def dashboard_kg():
     with open("language/text-zh.json", "r", encoding="utf-8") as f:
         zh_json = json.load(f)
     return render_template(
-        "templates_kg/dashboard.html",
+        "templates_lk/dashboard.html",
         zh=zh_json["Dashboard"]
     )
 # test 

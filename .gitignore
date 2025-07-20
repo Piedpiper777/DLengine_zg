@@ -10,3 +10,4 @@ neo4j5.26.4/data/
 package/jdk-21.0.6/lib/
 models_storage/resnet18.pth
 package/neo4j3.5.13/bin/tools/cypher-shell.jar
+/uploads/
