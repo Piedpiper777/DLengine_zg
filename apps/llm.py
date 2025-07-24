@@ -12,7 +12,7 @@ class DeepSeekLLMClient:
             api_key: DeepSeek API 密钥
             model: 模型名称，默认为 deepseek-chat
         """
-        self.api_key = api_key or "sk-30e3786c078e42e09482b6c2427937ee"  
+        self.api_key = api_key or "sk-"  
         self.model = model
         
         # 初始化 OpenAI 客户端以连接 DeepSeek API
@@ -85,6 +85,74 @@ class DeepSeekLLMClient:
         except Exception as e:
             print(f"DeepSeek API 调用失败: {e}")
             return f"抱歉，AI服务暂时不可用。错误信息：{str(e)}", chat_history
+
+    def chat_completion_with_history_stream(self, user_input: str, chat_history: List[Dict] = None):
+        """
+        使用聊天历史进行流式对话
+        
+        Args:
+            user_input: 用户输入
+            chat_history: 聊天历史，格式为 [{"role": "user/assistant", "content": "..."}]
+        
+        Returns:
+            生成器，产生流式文本块
+        """
+        if chat_history is None:
+            chat_history = []
+        
+        # 构建消息列表
+        messages = []
+        
+        # 添加系统提示
+        system_prompt = """你是一个专业的工业技术AI助手，专注于制造业、自动化、设备维护、CAD/CAM、工业4.0等领域。
+
+请遵循以下原则：
+1. 提供准确、实用的工业技术信息
+2. 回答要简洁明了，重点突出
+3. 适当使用技术术语，但要易于理解
+4. 如果涉及安全操作，请特别强调安全注意事项
+5. 回复长度控制在200-400字以内，避免过长回复
+
+请用中文回答，语气专业但友好。"""
+    
+        messages.append({"role": "system", "content": system_prompt})
+        
+        # 添加聊天历史（限制最近8轮对话）
+        recent_history = chat_history[-16:] if len(chat_history) > 16 else chat_history
+        messages.extend(recent_history)
+        
+        # 添加当前用户输入
+        messages.append({"role": "user", "content": user_input})
+        
+        try:
+            # 调用 DeepSeek API，启用流式响应
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=800,
+                temperature=0.1,
+                top_p=0.8,
+                stream=True  # 启用流式输出
+            )
+            
+            # 收集完整的响应内容
+            full_content = ""
+            
+            # 逐块返回生成的内容
+            for chunk in response:
+                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    content_delta = chunk.choices[0].delta.content
+                    full_content += content_delta
+                    yield content_delta
+                    
+            # 返回完整的响应，以便保存到历史记录
+            return full_content
+                
+        except Exception as e:
+            print(f"DeepSeek API 流式调用失败: {e}")
+            error_msg = f"抱歉，AI服务暂时不可用。错误信息：{str(e)}"
+            yield error_msg
+            return error_msg
 
 # 创建全局实例
 llm_client = DeepSeekLLMClient()

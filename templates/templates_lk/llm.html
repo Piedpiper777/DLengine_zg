@@ -216,6 +216,15 @@ if (typeof markdownit === 'undefined') {
         font-size: 11px;
         color: #9ca3af;
         margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    
+    .conversation-date:before {
+        content: '🕒';
+        font-size: 10px;
+        opacity: 0.8;
     }
     
     .conversation-actions {
@@ -395,6 +404,11 @@ if (typeof markdownit === 'undefined') {
         40% { transform: scale(1); opacity: 1; }
     }
     
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
     /* 空状态 */
     .empty-state {
         flex: 1;
@@ -480,6 +494,42 @@ if (typeof markdownit === 'undefined') {
         margin: 16px 0;
         font-weight: 500;
         box-shadow: 0 2px 8px rgba(220, 38, 38, 0.15);
+    }
+    
+    /* 滚动到底部按钮样式 */
+    .scroll-to-bottom-btn {
+        position: fixed;
+        bottom: 140px;
+        right: 30px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #667eea;
+        color: white;
+        border: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 100;
+        opacity: 0;
+        transform: translateY(20px);
+        transition: all 0.3s ease;
+        pointer-events: none;
+    }
+
+    .scroll-to-bottom-btn.show {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: all;
+    }
+
+    .scroll-to-bottom-btn:hover {
+        background: #764ba2;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.25);
     }
     
     /* 响应式设计 */
@@ -745,13 +795,69 @@ if (typeof markdownit === 'undefined') {
         color: #9ca3af;
         margin-top: 8px;
         opacity: 0.7;
+        display: flex;
+        justify-content: flex-end;
+        padding-top: 4px;
     }
     
     .message.user .message-time {
         color: rgba(255,255,255,0.7);
     }
     
-    /* 其他现有样式保持不变... */
+    /* 滚动到底部按钮样式 */
+    .scroll-to-bottom-btn {
+        position: fixed;
+        bottom: 140px;
+        right: 30px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #667eea;
+        color: white;
+        border: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 100;
+        opacity: 0;
+        transform: translateY(20px);
+        transition: all 0.3s ease;
+        pointer-events: none;
+    }
+
+    .scroll-to-bottom-btn.show {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: all;
+    }
+
+    .scroll-to-bottom-btn:hover {
+        background: #764ba2;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+    }
+    
+    /* 遮罩层样式 */
+    .sidebar-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 5;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+
+    .sidebar-overlay.show {
+        opacity: 1;
+        pointer-events: auto;
+    }
 </style>
 {% endblock %}
 
@@ -936,7 +1042,7 @@ function updateStreamingMessage(messageElement, content) {
     
     const contentDiv = messageElement.querySelector('.streaming-content');
     if (contentDiv) {
-        // 使用Markdown渲染
+        // 使用Markdown渲染，而不是简单的HTML转义
         contentDiv.innerHTML = renderMarkdown(content);
         
         // 如果用户在底部，继续滚动
@@ -946,8 +1052,45 @@ function updateStreamingMessage(messageElement, content) {
     }
 }
 
-// 修改添加消息函数（使用Markdown渲染）
-function addMessage(role, content) {
+// 创建流式消息元素
+function createStreamingMessage() {
+    const container = document.getElementById('messagesContainer');
+    if (!container) {
+        console.error('❌ 消息容器未找到');
+        return null;
+    }
+    
+    // 检查用户是否在底部
+    const shouldAutoScroll = isScrolledToBottom();
+    
+    const time = new Date().toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message assistant streaming';
+    messageDiv.innerHTML = `
+        <div class="message-avatar">🏭</div>
+        <div class="message-content">
+            <div class="streaming-content"></div>
+            <div class="message-time">${time}</div>
+        </div>
+    `;
+    
+    container.appendChild(messageDiv);
+    currentStreamingMessage = messageDiv;
+    
+    // 只有当用户在底部时才自动滚动
+    if (shouldAutoScroll) {
+        scrollToBottom();
+    }
+    
+    return messageDiv;
+}
+
+// 修改添加消息函数
+function addMessage(role, content, created_at = null) {
     const container = document.getElementById('messagesContainer');
     if (!container) {
         console.error('❌ 消息容器未找到');
@@ -963,10 +1106,8 @@ function addMessage(role, content) {
         emptyState.remove();
     }
     
-    const time = new Date().toLocaleTimeString('zh-CN', {
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+    // 如果没有提供创建时间，则使用当前时间
+    const messageTime = created_at ? formatMessageTime(created_at) : formatMessageTime(new Date());
     
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
@@ -976,7 +1117,7 @@ function addMessage(role, content) {
         </div>
         <div class="message-content">
             ${renderMarkdown(content)}
-            <div class="message-time">${time}</div>
+            <div class="message-time">${messageTime}</div>
         </div>
     `;
     
@@ -988,7 +1129,107 @@ function addMessage(role, content) {
     }
 }
 
-// 修改渲染消息列表函数（使用Markdown渲染）
+// 格式化消息时间 - 使用东八区时间并显示日期
+function formatMessageTime(dateString) {
+    if (!dateString) {
+        return '';
+    }
+    
+    let date;
+    // 处理SQLite的ISO格式或时间戳
+    try {
+        date = new Date(dateString);
+        
+        // 如果无效，尝试其他格式
+        if (isNaN(date.getTime())) {
+            // SQLite格式可能是 YYYY-MM-DD HH:MM:SS
+            if (typeof dateString === 'string' && dateString.includes('-')) {
+                // 尝试添加 'T' 和 'Z' 使之成为有效的ISO格式
+                date = new Date(dateString.replace(' ', 'T') + '.000+08:00');
+            }
+        }
+    } catch (e) {
+        console.warn('无法解析日期:', dateString);
+        // 如果无法解析，则使用当前时间
+        date = new Date();
+    }
+    
+    // 如果仍然无效，返回一个占位符
+    if (isNaN(date.getTime())) {
+        return '--/-- --:--';
+    }
+    
+    // 确保使用东八区时间
+    const options = { 
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    };
+    
+    // 今天的日期（东八区）
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    // 日期比较
+    const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diffDays = Math.floor((today - messageDate) / (1000 * 60 * 60 * 24));
+    
+    // 根据日期距离显示不同格式
+    if (diffDays === 0) {
+        // 今天: 只显示时间
+        return '今天 ' + new Intl.DateTimeFormat('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'Asia/Shanghai'
+        }).format(date);
+    } else if (diffDays === 1) {
+        // 昨天: 显示"昨天"和时间
+        return '昨天 ' + new Intl.DateTimeFormat('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'Asia/Shanghai'
+        }).format(date);
+    } else if (diffDays < 7) {
+        // 一周内: 显示星期几和时间
+        const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        const weekday = weekdays[date.getDay()];
+        return weekday + ' ' + new Intl.DateTimeFormat('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'Asia/Shanghai'
+        }).format(date);
+    } else if (date.getFullYear() === now.getFullYear()) {
+        // 同一年: 显示月-日 时:分
+        return new Intl.DateTimeFormat('zh-CN', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'Asia/Shanghai'
+        }).format(date);
+    } else {
+        // 不同年: 显示完整日期时间
+        return new Intl.DateTimeFormat('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'Asia/Shanghai'
+        }).format(date);
+    }
+}
+
+// 修改渲染消息列表函数
 function renderMessages(messages) {
     const container = document.getElementById('messagesContainer');
     if (!container) {
@@ -1007,10 +1248,8 @@ function renderMessages(messages) {
     
     // 清空容器并渲染消息
     container.innerHTML = messages.map(msg => {
-        const time = new Date().toLocaleTimeString('zh-CN', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        // 使用消息的实际创建时间
+        const time = formatMessageTime(msg.created_at);
         
         return `
             <div class="message ${msg.role}">
@@ -1039,45 +1278,290 @@ function renderMessages(messages) {
     console.log(`✅ 渲染了 ${messages.length} 条消息`);
 }
 
-// 其他函数保持不变...
-// （这里省略其他已有的函数代码，保持原有逻辑不变）
-
-// 设置输入框事件
-function setupInputHandler() {
-    const input = document.getElementById('messageInput');
-    const sendBtn = document.getElementById('sendBtn');
+// 渲染对话列表
+function renderConversations() {
+    const container = document.getElementById('conversationsList');
     
-    if (!input || !sendBtn) {
-        console.error('❌ 输入框或发送按钮未找到');
+    if (!container) {
+        console.error('❌ 对话列表容器未找到');
         return;
     }
     
-    // 自动调整高度
-    input.addEventListener('input', function() {
-        this.style.height = 'auto';
-        this.style.height = Math.min(this.scrollHeight, 200) + 'px';
-        
-        // 更新发送按钮状态
-        updateButtonStates();
-    });
+    if (conversations.length === 0) {
+        container.innerHTML = '<div style="padding: 20px; text-align: center; color: #9ca3af;">暂无对话</div>';
+        return;
+    }
     
-    // 回车发送
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            if (!isLoading && this.value.trim()) {
-                if (useStreamMode) {
-                    sendMessageStream();
-                } else {
-                    sendMessage();
-                }
+    container.innerHTML = conversations.map(conv => {
+        // 使用与消息相同的格式化函数，确保一致性
+        const date = formatMessageTime(conv.created_at);
+        
+        return `
+            <div class="conversation-item ${conv.chat_id === currentConversationId ? 'active' : ''}" 
+                 onclick="selectConversation('${conv.chat_id}')">
+                <div class="conversation-content">
+                    <div class="conversation-title">${escapeHtml(conv.title || '新对话')}</div>
+                    <div class="conversation-preview">${escapeHtml(conv.last_message || '暂无消息')}</div>
+                    <div class="conversation-date">${date}</div>
+                </div>
+                <div class="conversation-actions">
+                    <button class="delete-btn" onclick="deleteConversation('${conv.chat_id}', event)" title="删除对话">×</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    console.log(`✅ 渲染了 ${conversations.length} 个对话`);
+}
+
+// HTML转义函数
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// 创建新对话
+async function createNewConversation() {
+    if (isLoading) return;
+    
+    try {
+        console.log('🆕 开始创建新对话...');
+        isLoading = true;
+        updateButtonStates();
+        
+        const response = await fetch('/llm/conversations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('📊 创建对话响应:', data);
+        
+        if (data.success) {
+            currentConversationId = data.chat_id;
+            console.log(`✅ 新对话创建成功: ${currentConversationId}`);
+            
+            await loadConversations();
+            initializeEmptyChat();
+            
+            // 关闭侧边栏并聚焦输入框
+            const sidebar = document.getElementById('conversationsSidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.remove('open');
+            overlay.classList.remove('show');
+            
+            const input = document.getElementById('messageInput');
+            if (input) input.focus();
+        } else {
+            throw new Error(data.message || '创建对话失败');
+        }
+    } catch (error) {
+        console.error('❌ 创建对话失败:', error);
+        showError('创建对话失败：' + error.message);
+    } finally {
+        isLoading = false;
+        updateButtonStates();
+    }
+}
+
+// 加载对话列表
+async function loadConversations() {
+    try {
+        console.log('📋 开始加载对话列表...');
+        
+        const response = await fetch('/llm/conversations');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('📊 对话列表数据:', data);
+        
+        if (data.success) {
+            conversations = data.conversations || [];
+            allConversations = [...conversations];
+            
+            renderConversations();
+            
+            // 如果有对话但没有选择当前对话，选择第一个
+            if (conversations.length > 0 && !currentConversationId) {
+                console.log('🎯 选择第一个对话...');
+                selectConversation(conversations[0].chat_id);
+            }
+        } else {
+            throw new Error(data.message || '获取对话列表失败');
+        }
+    } catch (error) {
+        console.error('❌ 加载对话失败:', error);
+        showError('加载对话失败：' + error.message);
+    }
+}
+
+// 平滑滚动到底部
+function smoothScrollToBottom() {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+    
+    container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth'
+    });
+}
+
+// 立即滚动到底部
+function scrollToBottom() {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+    
+    container.scrollTop = container.scrollHeight;
+}
+
+// 检查是否滚动到底部
+function isScrolledToBottom() {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return true;
+    
+    // 容差值，考虑到某些浏览器的舍入误差
+    const tolerance = 50;
+    
+    return container.scrollHeight - container.clientHeight - container.scrollTop <= tolerance;
+}
+
+// 切换对话列表侧边栏显示/隐藏
+function toggleConversations() {
+    const sidebar = document.getElementById('conversationsSidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    
+    if (!sidebar || !overlay) {
+        console.error('❌ 侧边栏元素未找到');
+        return;
+    }
+    
+    // 切换侧边栏显示状态
+    sidebar.classList.toggle('open');
+    
+    // 切换遮罩层显示状态
+    if (sidebar.classList.contains('open')) {
+        overlay.classList.add('show');
+    } else {
+        overlay.classList.remove('show');
+    }
+}
+
+// 设置滚动事件
+function setupScrollEvents() {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+    
+    // 添加滚动事件监听
+    container.addEventListener('scroll', function() {
+        // 更新滚动按钮状态
+        const scrollButton = document.getElementById('scrollToBottomBtn');
+        if (scrollButton) {
+            if (isScrolledToBottom()) {
+                scrollButton.classList.remove('show');
+            } else {
+                scrollButton.classList.add('show');
             }
         }
     });
     
-    // 初始状态
-    updateButtonStates();
-    console.log('✅ 输入框事件设置完成');
+    // 添加滚动到底部按钮
+    addScrollToBottomButton();
+    
+    console.log('✅ 滚动事件设置完成');
+}
+
+// 过滤对话列表
+function filterConversations(searchTerm) {
+    if (!searchTerm) {
+        conversations = [...allConversations];
+    } else {
+        searchTerm = searchTerm.toLowerCase();
+        conversations = allConversations.filter(conv => 
+            (conv.title && conv.title.toLowerCase().includes(searchTerm)) || 
+            (conv.last_message && conv.last_message.toLowerCase().includes(searchTerm))
+        );
+    }
+    
+    renderConversations();
+}
+
+// 显示错误信息
+function showError(message) {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+    
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.textContent = message;
+    
+    container.appendChild(errorDiv);
+    
+    // 5秒后自动移除
+    setTimeout(() => {
+        if (errorDiv.parentNode) {
+            errorDiv.parentNode.removeChild(errorDiv);
+        }
+    }, 5000);
+}
+
+// 更新按钮状态
+function updateButtonStates() {
+    const sendBtn = document.getElementById('sendBtn');
+    const input = document.getElementById('messageInput');
+    const newChatBtn = document.getElementById('newChatBtn');
+    
+    if (sendBtn && input) {
+        sendBtn.disabled = isLoading || !input.value.trim();
+    }
+    
+    if (newChatBtn) {
+        newChatBtn.disabled = isLoading;
+    }
+}
+
+// 处理流式数据
+function handleStreamData(data, messageElement) {
+    console.log('📊 流式数据:', data.type);
+    
+    switch (data.type) {
+        case 'start':
+            console.log('🚀 开始接收流式响应');
+            // 可以显示"正在思考..."的状态
+            break;
+            
+        case 'content':
+            // 更新消息内容 - 使用renderMarkdown而不是escapeHtml
+            updateStreamingMessage(messageElement, data.content);
+            break;
+            
+        case 'done':
+            console.log('✅ 流式响应完成');
+            // 移除流式样式
+            if (messageElement) {
+                messageElement.classList.remove('streaming');
+            }
+            break;
+            
+        case 'error':
+            console.error('❌ 流式响应错误:', data.content);
+            updateStreamingMessage(messageElement, data.content);
+            if (messageElement) {
+                messageElement.classList.remove('streaming');
+                messageElement.classList.add('error');
+            }
+            break;
+    }
 }
 
 // 流式发送消息
@@ -1189,12 +1673,18 @@ async function sendMessageStream() {
         } catch (fetchError) {
             console.error('❌ 流式请求失败:', fetchError);
             updateStreamingMessage(aiMessageElement, '网络错误，请检查连接后重试：' + fetchError.message);
+            if (aiMessageElement) {
+                aiMessageElement.classList.remove('streaming');
+                aiMessageElement.classList.add('error');
+            }
         }
         
     } catch (error) {
         console.error('❌ 发送流式消息失败:', error);
         if (currentStreamingMessage) {
             updateStreamingMessage(currentStreamingMessage, '发送消息失败：' + error.message);
+            currentStreamingMessage.classList.remove('streaming');
+            currentStreamingMessage.classList.add('error');
         }
     } finally {
         currentStreamingMessage = null;
@@ -1206,110 +1696,54 @@ async function sendMessageStream() {
     }
 }
 
-// 创建流式消息元素
-function createStreamingMessage() {
-    const container = document.getElementById('messagesContainer');
-    if (!container) {
-        console.error('❌ 消息容器未找到');
-        return null;
+// 设置输入框事件处理
+function setupInputHandler() {
+    const input = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    
+    if (!input || !sendBtn) {
+        console.error('❌ 输入框或发送按钮未找到');
+        return;
     }
     
-    // 检查用户是否在底部
-    const shouldAutoScroll = isScrolledToBottom();
-    
-    const time = new Date().toLocaleTimeString('zh-CN', {
-        hour: '2-digit',
-        minute: '2-digit'
+    // 自动调整高度
+    input.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+        
+        // 更新发送按钮状态
+        updateButtonStates();
     });
     
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'message assistant streaming';
-    messageDiv.innerHTML = `
-        <div class="message-avatar">🏭</div>
-        <div class="message-content">
-            <div class="streaming-content"></div>
-            <div class="message-time">${time}</div>
-        </div>
-    `;
-    
-    container.appendChild(messageDiv);
-    currentStreamingMessage = messageDiv;
-    
-    // 只有当用户在底部时才自动滚动
-    if (shouldAutoScroll) {
-        scrollToBottom();
-    }
-    
-    return messageDiv;
-}
-
-// 更新流式消息内容
-function updateStreamingMessage(messageElement, content) {
-    if (!messageElement) return;
-    
-    const contentDiv = messageElement.querySelector('.streaming-content');
-    if (contentDiv) {
-        contentDiv.innerHTML = escapeHtml(content);
-        
-        // 如果用户在底部，继续滚动
-        if (isScrolledToBottom()) {
-            scrollToBottom();
+    // 回车发送
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (!isLoading && this.value.trim()) {
+                if (useStreamMode) {
+                    sendMessageStream();
+                } else {
+                    sendMessage();
+                }
+            }
         }
-    }
-}
-
-// 处理流式数据
-function handleStreamData(data, messageElement) {
-    console.log('📊 流式数据:', data.type);
+    });
     
-    switch (data.type) {
-        case 'start':
-            console.log('🚀 开始接收流式响应');
-            // 可以显示"正在思考..."的状态
-            break;
-            
-        case 'content':
-            // 更新消息内容
-            updateStreamingMessage(messageElement, data.content);
-            break;
-            
-        case 'done':
-            console.log('✅ 流式响应完成');
-            // 移除流式样式
-            if (messageElement) {
-                messageElement.classList.remove('streaming');
-            }
-            break;
-            
-        case 'error':
-            console.error('❌ 流式响应错误:', data.content);
-            updateStreamingMessage(messageElement, data.content);
-            if (messageElement) {
-                messageElement.classList.remove('streaming');
-                messageElement.classList.add('error');
-            }
-            break;
-    }
+    // 初始状态
+    updateButtonStates();
+    console.log('✅ 输入框事件设置完成');
 }
 
-// 修改原有的发送消息函数（现在调用流式版本）
+// 普通发送消息（非流式，备用）
 async function sendMessage() {
-    if (useStreamMode) {
-        return sendMessageStream();
-    }
-    
-    // 原有的非流式版本
     const input = document.getElementById('messageInput');
     const message = input ? input.value.trim() : '';
     
     if (!message || isLoading) return;
     
     try {
-        console.log(`💬 发送消息: ${message.substring(0, 50)}...`);
-        
         // 如果没有当前对话，创建一个
         if (!currentConversationId) {
-            console.log('🆕 没有当前对话，创建新对话...');
             await createNewConversation();
             if (!currentConversationId) {
                 throw new Error('无法创建对话');
@@ -1343,27 +1777,29 @@ async function sendMessage() {
             })
         });
         
+        // 隐藏输入指示器
+        hideTypingIndicator();
+        
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
         const data = await response.json();
-        console.log('📊 聊天响应:', data.success);
         
         if (data.success) {
-            // 添加AI回复
-            addMessage('assistant', data.response || '抱歉，我没有生成回复。');
+            addMessage('assistant', data.response);
             
             // 更新对话列表
             await loadConversations();
         } else {
-            addMessage('assistant', '抱歉，出现了错误：' + (data.message || '未知错误'));
+            throw new Error(data.message || '消息发送失败');
         }
+        
     } catch (error) {
         console.error('❌ 发送消息失败:', error);
-        addMessage('assistant', '网络错误，请检查连接后重试：' + error.message);
-    } finally {
         hideTypingIndicator();
+        showError('发送消息失败：' + error.message);
+    } finally {
         isLoading = false;
         updateButtonStates();
         
@@ -1372,284 +1808,21 @@ async function sendMessage() {
     }
 }
 
-// 其他函数保持不变...
-// （保留所有之前的函数：toggleConversations, filterConversations, updateButtonStates, 
-//  showError, scrollToBottom, setupScrollEvents, loadConversations, renderConversations,
-//  escapeHtml, createNewConversation, selectConversation, deleteConversation,
-//  ensureMessageContainer, initializeEmptyChat, renderMessages, addMessage,
-//  showTypingIndicator, hideTypingIndicator, addScrollToBottomButton 等）
-
-// 切换对话列表显示
-function toggleConversations() {
-    const sidebar = document.getElementById('conversationsSidebar');
-    const overlay = document.getElementById('sidebarOverlay');
-    
-    if (sidebar.classList.contains('open')) {
-        sidebar.classList.remove('open');
-        overlay.classList.remove('show');
-    } else {
-        sidebar.classList.add('open');
-        overlay.classList.add('show');
-    }
-}
-
-// 搜索对话
-function filterConversations(query) {
-    if (!query.trim()) {
-        conversations = [...allConversations];
-    } else {
-        conversations = allConversations.filter(conv => 
-            conv.title.toLowerCase().includes(query.toLowerCase()) ||
-            conv.last_message.toLowerCase().includes(query.toLowerCase())
-        );
-    }
-    renderConversations();
-}
-
-// 更新按钮状态
-function updateButtonStates() {
-    const sendBtn = document.getElementById('sendBtn');
-    const newChatBtn = document.getElementById('newChatBtn');
-    const input = document.getElementById('messageInput');
-    
-    if (sendBtn) {
-        const hasText = input ? input.value.trim().length > 0 : false;
-        sendBtn.disabled = !hasText || isLoading;
-    }
-    
-    if (newChatBtn) {
-        newChatBtn.disabled = isLoading;
-    }
-}
-
-// 显示错误消息
-function showError(message) {
-    const container = document.getElementById('messagesContainer');
-    if (!container) return;
-    
-    // 确保移除空状态
-    const emptyState = container.querySelector('#emptyState');
-    if (emptyState) {
-        emptyState.remove();
-    }
-    
-    const errorDiv = document.createElement('div');
-    errorDiv.className = 'error-message';
-    errorDiv.textContent = message;
-    
-    container.appendChild(errorDiv);
-    scrollToBottom();
-    
-    // 5秒后自动移除错误消息
-    setTimeout(() => {
-        if (errorDiv && errorDiv.parentNode) {
-            errorDiv.parentNode.removeChild(errorDiv);
-        }
-    }, 5000);
-}
-
-// 滚动到底部
-function scrollToBottom() {
-    const container = document.getElementById('messagesContainer');
-    if (container) {
-        // 使用 requestAnimationFrame 确保在DOM更新后执行
-        requestAnimationFrame(() => {
-            container.scrollTop = container.scrollHeight;
-        });
-    }
-}
-
-// 改进的滚动函数，支持平滑滚动到底部
-function smoothScrollToBottom() {
-    const container = document.getElementById('messagesContainer');
-    if (container) {
-        container.scrollTo({
-            top: container.scrollHeight,
-            behavior: 'smooth'
-        });
-    }
-}
-
-// 添加自动滚动检测函数
-function isScrolledToBottom() {
-    const container = document.getElementById('messagesContainer');
-    if (!container) return true;
-    
-    const threshold = 50; // 50px的阈值
-    return container.scrollTop + container.clientHeight >= container.scrollHeight - threshold;
-}
-
-// 设置滚动事件
-function setupScrollEvents() {
-    const container = document.getElementById('messagesContainer');
-    if (!container) return;
-    
-    // 添加滚动事件监听
-    let scrollTimeout;
-    container.addEventListener('scroll', function() {
-        // 防抖处理
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-            // 可以在这里添加滚动到顶部加载更多消息的逻辑
-            if (container.scrollTop === 0) {
-                console.log('📜 滚动到顶部，可以加载更多历史消息');
-            }
-        }, 150);
-    });
-    
-    console.log('✅ 滚动事件设置完成');
-}
-
-// 加载对话列表
-async function loadConversations() {
-    try {
-        console.log('📋 开始加载对话列表...');
-        const response = await fetch('/llm/conversations');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        console.log('📊 对话列表数据:', data);
-        
-        if (data.success) {
-            allConversations = data.conversations || [];
-            conversations = [...allConversations];
-            renderConversations();
-            
-            // 如果没有对话，创建一个新的
-            if (conversations.length === 0) {
-                console.log('📝 没有对话，创建新对话...');
-                await createNewConversation();
-            } else {
-                // 选择第一个对话
-                console.log('🎯 选择第一个对话...');
-                selectConversation(conversations[0].chat_id);
-            }
-        } else {
-            throw new Error(data.message || '获取对话列表失败');
-        }
-    } catch (error) {
-        console.error('❌ 加载对话列表失败:', error);
-        showError('加载对话列表失败：' + error.message);
-    }
-}
-
-// 渲染对话列表
-function renderConversations() {
-    const container = document.getElementById('conversationsList');
-    
-    if (!container) {
-        console.error('❌ 对话列表容器未找到');
-        return;
-    }
-    
-    if (conversations.length === 0) {
-        container.innerHTML = '<div style="padding: 20px; text-align: center; color: #9ca3af;">暂无对话</div>';
-        return;
-    }
-    
-    container.innerHTML = conversations.map(conv => {
-        const date = new Date(conv.created_at).toLocaleDateString('zh-CN', {
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        
-        return `
-            <div class="conversation-item ${conv.chat_id === currentConversationId ? 'active' : ''}" 
-                 onclick="selectConversation('${conv.chat_id}')">
-                <div class="conversation-content">
-                    <div class="conversation-title">${escapeHtml(conv.title || '新对话')}</div>
-                    <div class="conversation-preview">${escapeHtml(conv.last_message || '暂无消息')}</div>
-                    <div class="conversation-date">${date}</div>
-                </div>
-                <div class="conversation-actions">
-                    <button class="delete-btn" onclick="deleteConversation('${conv.chat_id}', event)" title="删除对话">×</button>
-                </div>
-            </div>
-        `;
-    }).join('');
-    
-    console.log(`✅ 渲染了 ${conversations.length} 个对话`);
-}
-
-// HTML转义函数
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// 创建新对话
-async function createNewConversation() {
-    if (isLoading) return;
+// 选择对话
+async function selectConversation(chat_id) {
+    if (isLoading || currentConversationId === chat_id) return;
     
     try {
-        console.log('🆕 开始创建新对话...');
+        console.log(`🎯 选择对话: ${chat_id}`);
         isLoading = true;
         updateButtonStates();
         
-        const response = await fetch('/llm/conversations', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
+        // 更新UI中的活跃对话
+        currentConversationId = chat_id;
+        renderConversations();
         
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        console.log('📊 创建对话响应:', data);
-        
-        if (data.success) {
-            currentConversationId = data.chat_id;
-            console.log(`✅ 新对话创建成功: ${currentConversationId}`);
-            
-            await loadConversations();
-            initializeEmptyChat();
-            
-            // 关闭侧边栏并聚焦输入框
-            const sidebar = document.getElementById('conversationsSidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            sidebar.classList.remove('open');
-            overlay.classList.remove('show');
-            
-            const input = document.getElementById('messageInput');
-            if (input) input.focus();
-        } else {
-            throw new Error(data.message || '创建对话失败');
-        }
-    } catch (error) {
-        console.error('❌ 创建对话失败:', error);
-        showError('创建对话失败：' + error.message);
-    } finally {
-        isLoading = false;
-        updateButtonStates();
-    }
-}
-
-// 选择对话
-async function selectConversation(chatId) {
-    if (chatId === currentConversationId || isLoading) return;
-    
-    try {
-        console.log(`🎯 选择对话: ${chatId}`);
-        currentConversationId = chatId;
-        renderConversations(); // 更新选中状态
-        
-        // 关闭侧边栏
-        const sidebar = document.getElementById('conversationsSidebar');
-        const overlay = document.getElementById('sidebarOverlay');
-        sidebar.classList.remove('open');
-        overlay.classList.remove('show');
-        
-        const response = await fetch(`/llm/conversations/${chatId}`);
+        // 获取对话消息
+        const response = await fetch(`/llm/conversations/${chat_id}`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -1659,26 +1832,38 @@ async function selectConversation(chatId) {
         console.log('📊 对话详情:', data);
         
         if (data.success) {
-            renderMessages(data.messages || []);
+            // 渲染消息
+            renderMessages(data.messages);
         } else {
-            throw new Error(data.message || '获取对话详情失败');
+            throw new Error(data.message || '获取对话消息失败');
         }
     } catch (error) {
         console.error('❌ 选择对话失败:', error);
-        showError('加载对话失败：' + error.message);
+        showError('获取对话失败：' + error.message);
+    } finally {
+        isLoading = false;
+        updateButtonStates();
     }
 }
 
 // 删除对话
-async function deleteConversation(chatId, event) {
-    event.stopPropagation();
+async function deleteConversation(chat_id, event) {
+    // 阻止冒泡，避免触发对话选择
+    if (event) {
+        event.stopPropagation();
+    }
     
-    if (!confirm('确定要删除这个对话吗？') || isLoading) return;
+    if (isLoading || !chat_id) return;
+    
+    if (!confirm('确定要删除这个对话吗？此操作不可恢复。')) {
+        return;
+    }
     
     try {
-        console.log(`🗑️ 删除对话: ${chatId}`);
+        console.log(`🗑️ 删除对话: ${chat_id}`);
+        isLoading = true;
         
-        const response = await fetch(`/llm/conversations/${chatId}`, {
+        const response = await fetch(`/llm/conversations/${chat_id}`, {
             method: 'DELETE'
         });
         
@@ -1687,15 +1872,16 @@ async function deleteConversation(chatId, event) {
         }
         
         const data = await response.json();
+        console.log('📊 删除响应:', data);
         
         if (data.success) {
-            console.log('✅ 对话删除成功');
-            
-            if (chatId === currentConversationId) {
+            // 如果删除的是当前对话，清空消息区域
+            if (chat_id === currentConversationId) {
                 currentConversationId = null;
                 initializeEmptyChat();
             }
             
+            // 重新加载对话列表
             await loadConversations();
         } else {
             throw new Error(data.message || '删除对话失败');
@@ -1703,30 +1889,17 @@ async function deleteConversation(chatId, event) {
     } catch (error) {
         console.error('❌ 删除对话失败:', error);
         showError('删除对话失败：' + error.message);
+    } finally {
+        isLoading = false;
+        updateButtonStates();
     }
 }
 
-// 确保消息容器存在且正确初始化
-function ensureMessageContainer() {
-    const container = document.getElementById('messagesContainer');
-    if (!container) {
-        console.error('❌ 消息容器未找到');
-        return;
-    }
-    
-    // 如果容器中有空状态，移除它
-    const emptyState = container.querySelector('#emptyState');
-    if (emptyState) {
-        emptyState.style.display = 'none';
-    }
-}
-
-// 初始化空的聊天状态
+// 初始化空聊天界面
 function initializeEmptyChat() {
     const container = document.getElementById('messagesContainer');
     if (!container) return;
     
-    // 清空容器并重新添加空状态
     container.innerHTML = `
         <div class="empty-state" id="emptyState">
             <div class="empty-state-icon">🏭</div>
@@ -1753,116 +1926,31 @@ function initializeEmptyChat() {
             </div>
         </div>
     `;
+    
+    console.log('✅ 初始化空聊天界面完成');
 }
 
-// 渲染消息列表
-function renderMessages(messages) {
+// 确保消息容器准备好
+function ensureMessageContainer() {
     const container = document.getElementById('messagesContainer');
-    if (!container) {
-        console.error('❌ 消息容器未找到');
-        return;
-    }
+    if (!container) return;
     
-    if (!messages || messages.length === 0) {
-        initializeEmptyChat();
-        return;
-    }
-    
-    // 记录当前滚动位置
-    const scrollTop = container.scrollTop;
-    const isAtBottom = isScrolledToBottom();
-    
-    // 清空容器并渲染消息
-    container.innerHTML = messages.map(msg => {
-        const time = new Date().toLocaleTimeString('zh-CN', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        
-        return `
-            <div class="message ${msg.role}">
-                <div class="message-avatar">
-                    ${msg.role === 'user' ? '👤' : '🏭'}
-                </div>
-                <div class="message-content">
-                    ${renderMarkdown(msg.content || '')}
-                    <div class="message-time">${time}</div>
-                </div>
-            </div>
-        `;
-    }).join('');
-    
-    // 恢复滚动位置或滚动到底部
-    requestAnimationFrame(() => {
-        if (isAtBottom || messages.length <= 2) {
-            // 如果之前在底部或消息很少，滚动到底部
-            scrollToBottom();
-        } else {
-            // 否则恢复之前的位置
-            container.scrollTop = scrollTop;
-        }
-    });
-    
-    console.log(`✅ 渲染了 ${messages.length} 条消息`);
-}
-
-// 添加消息
-function addMessage(role, content) {
-    const container = document.getElementById('messagesContainer');
-    if (!container) {
-        console.error('❌ 消息容器未找到');
-        return;
-    }
-    
-    // 检查用户是否在底部
-    const shouldAutoScroll = isScrolledToBottom();
-    
-    // 确保移除空状态
+    // 移除欢迎屏幕
     const emptyState = container.querySelector('#emptyState');
     if (emptyState) {
         emptyState.remove();
     }
-    
-    const time = new Date().toLocaleTimeString('zh-CN', {
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-    
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${role}`;
-    messageDiv.innerHTML = `
-        <div class="message-avatar">
-            ${role === 'user' ? '👤' : '🏭'}
-        </div>
-        <div class="message-content">
-            ${renderMarkdown(content)}
-            <div class="message-time">${time}</div>
-        </div>
-    `;
-    
-    container.appendChild(messageDiv);
-    
-    // 只有当用户在底部时才自动滚动
-    if (shouldAutoScroll) {
-        scrollToBottom();
-    }
 }
 
-// 显示/隐藏输入指示器
+// 显示输入指示器
 function showTypingIndicator() {
     const container = document.getElementById('messagesContainer');
     if (!container) return;
     
-    // 检查是否需要自动滚动
-    const shouldAutoScroll = isScrolledToBottom();
-    
-    // 移除已存在的指示器
-    hideTypingIndicator();
-    
-    const indicator = document.createElement('div');
-    indicator.className = 'typing-indicator';
-    indicator.id = 'typingIndicator';
-    indicator.innerHTML = `
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'typing-indicator';
+    typingDiv.id = 'typingIndicator';
+    typingDiv.innerHTML = `
         <div class="message-avatar">🏭</div>
         <div class="typing-content">
             <div class="typing-dots">
@@ -1872,130 +1960,52 @@ function showTypingIndicator() {
             </div>
         </div>
     `;
-    container.appendChild(indicator);
     
-    // 只有在底部时才滚动
-    if (shouldAutoScroll) {
-        smoothScrollToBottom();
+    container.appendChild(typingDiv);
+    
+    // 如果用户在底部，自动滚动
+    if (isScrolledToBottom()) {
+        scrollToBottom();
     }
 }
 
+// 隐藏输入指示器
 function hideTypingIndicator() {
-    const indicator = document.getElementById('typingIndicator');
-    if (indicator && indicator.parentNode) {
-        indicator.parentNode.removeChild(indicator);
+    const typingIndicator = document.getElementById('typingIndicator');
+    if (typingIndicator && typingIndicator.parentNode) {
+        typingIndicator.parentNode.removeChild(typingIndicator);
     }
 }
 
-// 添加快速滚动到底部的按钮（可选）
+// 添加"滚动到底部"按钮
 function addScrollToBottomButton() {
     const container = document.getElementById('messagesContainer');
     if (!container) return;
     
-    // 创建滚动到底部按钮
-    const scrollBtn = document.createElement('button');
-    scrollBtn.className = 'scroll-to-bottom-btn';
-    scrollBtn.innerHTML = '↓';
-    scrollBtn.title = '滚动到底部';
-    scrollBtn.onclick = smoothScrollToBottom;
-    
-    // 添加到消息容器的父元素
-    const chatArea = container.parentElement;
-    if (chatArea) {
-        chatArea.appendChild(scrollBtn);
+    // 检查是否已经存在按钮
+    let scrollButton = document.getElementById('scrollToBottomBtn');
+    if (!scrollButton) {
+        scrollButton = document.createElement('button');
+        scrollButton.id = 'scrollToBottomBtn';
+        scrollButton.className = 'scroll-to-bottom-btn';
+        scrollButton.innerHTML = '↓';
+        scrollButton.title = '滚动到底部';
+        scrollButton.onclick = smoothScrollToBottom;
+        
+        // 添加到文档
+        document.body.appendChild(scrollButton);
     }
     
     // 根据滚动位置显示/隐藏按钮
     container.addEventListener('scroll', function() {
         if (isScrolledToBottom()) {
-            scrollBtn.style.display = 'none';
+            scrollButton.classList.remove('show');
         } else {
-            scrollBtn.style.display = 'flex';
+            scrollButton.classList.add('show');
         }
     });
+    
+    console.log('✅ 添加滚动按钮完成');
 }
-
-// 添加滚动按钮相关CSS和功能
-const additionalCSS = `
-    .scroll-to-bottom-btn {
-        position: absolute;
-        bottom: 100px;
-        right: 30px;
-        width: 40px;
-        height: 40px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border: none;
-        border-radius: 50%;
-        color: white;
-        cursor: pointer;
-        display: none;
-        align-items: center;
-        justify-content: center;
-        font-size: 18px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        transition: all 0.2s;
-        z-index: 20;
-    }
-    
-    .scroll-to-bottom-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(0,0,0,0.2);
-    }
-    
-    .chat-area {
-        position: relative;
-    }
-    
-    .sidebar-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background: rgba(0,0,0,0.3);
-        z-index: 5;
-        opacity: 0;
-        visibility: hidden;
-        transition: all 0.3s ease;
-    }
-    
-    .sidebar-overlay.show {
-        opacity: 1;
-        visibility: visible;
-    }
-    
-    /* 流式消息样式 */
-    .message.streaming .message-content {
-        position: relative;
-    }
-    
-    .message.streaming .streaming-content::after {
-        content: '▊';
-        animation: blink 1s infinite;
-        color: #667eea;
-        margin-left: 2px;
-    }
-    
-    @keyframes blink {
-        0%, 50% { opacity: 1; }
-        51%, 100% { opacity: 0; }
-    }
-    
-    .message.error .message-content {
-        background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-        border-color: #f87171;
-        color: #dc2626;
-    }
-`;
-
-// 动态添加CSS
-const style = document.createElement('style');
-style.textContent = additionalCSS;
-document.head.appendChild(style);
-
-// 在初始化时添加滚动按钮
-setTimeout(() => {
-    addScrollToBottomButton();
-}, 1000);
 </script>
 {% endblock %}

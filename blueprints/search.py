@@ -20,13 +20,16 @@ DB_PATH = os.path.join(os.getcwd(), 'chat_data.db')
 def init_db():
     """初始化数据库"""
     conn = sqlite3.connect(DB_PATH)
+    
+    # 添加时区支持
+    conn.execute("PRAGMA timezone='Asia/Shanghai'")
     cursor = conn.cursor()
     
     # 创建用户表
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id TEXT PRIMARY KEY,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
         )
     ''')
     
@@ -36,8 +39,8 @@ def init_db():
             chat_id TEXT PRIMARY KEY,
             user_id TEXT,
             title TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (user_id) REFERENCES users (user_id)
         )
     ''')
@@ -49,7 +52,7 @@ def init_db():
             chat_id TEXT,
             role TEXT,
             content TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (chat_id) REFERENCES conversations (chat_id)
         )
     ''')
@@ -103,6 +106,9 @@ def get_conversations(user_id):
     """获取用户的所有对话"""
     try:
         conn = sqlite3.connect(DB_PATH)
+        # 启用日期时间支持
+        conn.execute('PRAGMA foreign_keys = ON')
+        
         cursor = conn.cursor()
         cursor.execute('''
             SELECT c.chat_id, c.title, c.created_at, c.updated_at,
@@ -144,7 +150,7 @@ def get_messages(chat_id):
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT role, content FROM messages 
+            SELECT role, content, created_at FROM messages 
             WHERE chat_id = ? 
             ORDER BY created_at ASC
         ''', (chat_id,))
@@ -153,7 +159,8 @@ def get_messages(chat_id):
         for row in cursor.fetchall():
             messages.append({
                 'role': row[0],
-                'content': row[1]
+                'content': row[1],
+                'created_at': row[2]  # 添加创建时间
             })
         
         conn.close()
@@ -171,13 +178,13 @@ def add_message(chat_id, role, content):
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO messages (message_id, chat_id, role, content) 
-            VALUES (?, ?, ?, ?)
+            INSERT INTO messages (message_id, chat_id, role, content, created_at) 
+            VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
         ''', (message_id, chat_id, role, content))
         
         # 更新对话的更新时间
         cursor.execute('''
-            UPDATE conversations SET updated_at = CURRENT_TIMESTAMP 
+            UPDATE conversations SET updated_at = datetime('now', 'localtime')
             WHERE chat_id = ?
         ''', (chat_id,))
         
@@ -348,7 +355,7 @@ def delete_conversation_api(chat_id):
 # 流式聊天API
 @bp.route('/llm/chat/stream', methods=['POST'])
 def chat_stream_api():
-    """流式聊天API"""
+    """真正的流式聊天API"""
     try:
         print("🚀 开始处理流式聊天请求...")
         
@@ -385,7 +392,7 @@ def chat_stream_api():
         print(f"📚 历史消息数量: {len(messages)}")
         
         def generate_stream():
-            """生成流式响应"""
+            """生成真正的流式响应"""
             try:
                 print("🤖 开始流式LLM调用...")
                 
@@ -393,46 +400,32 @@ def chat_stream_api():
                 start_data = json.dumps({'type': 'start', 'message': 'AI正在思考...'}, ensure_ascii=False)
                 yield f"data: {start_data}\n\n"
                 
-                # 调用LLM获取完整响应
-                try:
-                    full_response, _ = llm_client.chat_completion_with_history(
-                        user_input=message,
-                        chat_history=messages[:-1]  # 排除刚添加的用户消息
-                    )
-                    print(f"✅ LLM完整响应长度: {len(full_response)}")
-                except Exception as llm_error:
-                    print(f"❌ LLM调用失败: {llm_error}")
-                    full_response = f"抱歉，AI服务暂时不可用: {str(llm_error)}"
+                # 累积的完整响应
+                full_response = ""
                 
-                # 清理响应内容
-                full_response = clean_content_for_json(full_response)
-                
-                # 模拟流式输出 - 按字符逐个发送
-                current_text = ""
-                words = full_response.split()
-                
-                for i, word in enumerate(words):
-                    if i > 0:
-                        current_text += " "
-                    current_text += word
+                # 调用真正的流式API
+                for content_chunk in llm_client.chat_completion_with_history_stream(
+                    user_input=message,
+                    chat_history=messages[:-1]  # 排除刚添加的用户消息
+                ):
+                    # 添加到完整响应
+                    full_response += content_chunk
                     
-                    # 发送当前累积的文本
+                    # 安全地发送内容块
                     try:
+                        # 清理JSON内容
+                        clean_chunk = clean_content_for_json(content_chunk)
                         content_data = json.dumps({
                             'type': 'content', 
-                            'content': current_text
+                            'content': full_response
                         }, ensure_ascii=False)
                         yield f"data: {content_data}\n\n"
                     except Exception as json_error:
                         print(f"❌ JSON序列化失败: {json_error}")
                         continue
-                    
-                    # 添加延迟模拟打字效果
-                    time.sleep(0.05)  # 50毫秒延迟
                 
-                # 保存AI回复到数据库（使用原始未清理的内容）
-                original_response = full_response.replace('\\\\', '\\').replace('\\"', '"')
-                add_message(chat_id, 'assistant', original_response)
+                # 保存AI回复到数据库
+                add_message(chat_id, 'assistant', full_response)
                 
                 # 如果是第一轮对话，更新对话标题
                 if len(messages) <= 1:
@@ -455,12 +448,13 @@ def chat_stream_api():
         # 返回流式响应
         return Response(
             generate_stream(),
-            mimetype='text/plain',
+            mimetype='text/event-stream',  # 使用标准的SSE MIME类型
             headers={
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Cache-Control'
+                'Access-Control-Allow-Headers': 'Cache-Control',
+                'X-Accel-Buffering': 'no'  # 禁用Nginx缓冲
             }
         )
         
