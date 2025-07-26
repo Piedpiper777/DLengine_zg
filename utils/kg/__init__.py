@@ -1,0 +1,2 @@
+# 导出主要的构建函数
+from .graph_builder import build_knowledge_graph_from_document

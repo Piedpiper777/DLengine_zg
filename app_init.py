@@ -18,6 +18,10 @@ from flask_migrate import Migrate
 from extensions import db, mail, app
 from global_variable import appConfig
 from app_config import config
+from flask import Flask
+from flask_session import Session
+import os
+import tempfile
 
 app.config.from_object(config)
 # 加载蓝图
@@ -49,6 +53,21 @@ app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(days=7)
 # 不对表单进行SCRF保护
 # TODO 应该要进行保护吧，到时候加一下
 app.config["WTF_CSRF_ENABLED"] = False
+
+# 配置服务器端会话
+SESSION_DIR = os.path.join(tempfile.gettempdir(), 'dlsystem_sessions')
+if not os.path.exists(SESSION_DIR):
+    os.makedirs(SESSION_DIR)
+
+app.config['SESSION_TYPE'] = 'filesystem'  # 使用文件系统存储
+app.config['SESSION_FILE_DIR'] = SESSION_DIR  # 设置文件目录
+app.config['SESSION_PERMANENT'] = True  # 使会话持久化
+app.config['SESSION_USE_SIGNER'] = True  # 对 cookie 进行签名
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 会话有效期（秒）
+app.config['SESSION_FILE_THRESHOLD'] = 500  # 会话文件数量阈值
+
+# 初始化 Flask-Session
+Session(app)
 
 db.init_app(app)
 migrate = Migrate(app, db)

@@ -1,57 +1,864 @@
-{% extends "templates_lk/base.html" %}{% block styles %}{{ super() }} 
-<link 
-  rel="stylesheet" 
-  href="{{ url_for('static', filename='css/styles_kg_search.css') }}"
-/>
+{% extends "templates_lk/base.html" %}
+
+{% block styles %}
+{{ super() }} 
+<link rel="stylesheet" href="{{ url_for('static', filename='css/styles_kg_search.css') }}"/>
+<style>
+    /* 知识图谱信息样式 */
+    .kg-info {
+        margin-bottom: 20px;
+    }
+    
+    .kg-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+        margin-top: 10px;
+    }
+    
+    .kg-stat-item {
+        background: #f8f9fa;
+        border-radius: 4px;
+        padding: 10px 15px;
+        flex-grow: 1;
+        min-width: 120px;
+        text-align: center;
+    }
+    
+    .kg-stat-value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #007bff;
+    }
+    
+    .kg-stat-label {
+        font-size: 12px;
+        color: #6c757d;
+    }
+    
+    .kg-created-time {
+        margin-top: 10px;
+        font-size: 14px;
+        color: #6c757d;
+        text-align: right;
+    }
+    
+    /* 知识图谱列表样式 */
+    .kg-list {
+        margin-bottom: 20px;
+    }
+    
+    .kg-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    .kg-item:last-child {
+        border-bottom: none;
+    }
+    
+    .kg-name {
+        font-weight: bold;
+    }
+    
+    .kg-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .kg-view-btn, .kg-delete-btn, .kg-edit-btn {
+        padding: 5px 10px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    .kg-view-btn {
+        background: #007bff;
+        color: white;
+    }
+    
+    .kg-view-btn:hover {
+        background: #0069d9;
+    }
+
+    .kg-edit-btn {
+        background: #28a745;
+        color: white;
+    }
+    
+    .kg-edit-btn:hover {
+        background: #218838;
+    }
+    
+    .kg-delete-btn {
+        background: #dc3545;
+        color: white;
+    }
+    
+    .kg-delete-btn:hover {
+        background: #c82333;
+    }
+    
+    /* 知识图谱可视化样式 */
+    .kg-visualization {
+        height: 500px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        overflow: hidden;
+        position: relative;
+        margin-bottom: 20px;
+    }
+    
+    #neo4j-graph {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+    
+    .kg-loading {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255,255,255,0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 10;
+    }
+    
+    .kg-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        animation: kg-spin 2s linear infinite;
+    }
+    
+    @keyframes kg-spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    /* 控制按钮样式 */
+    .kg-controls {
+        position: absolute;
+        bottom: 15px;
+        right: 15px;
+        display: flex;
+        gap: 8px;
+        z-index: 8;
+        background: rgba(255, 255, 255, 0.8);
+        padding: 6px;
+        border-radius: 6px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+    }
+    
+    .kg-controls button {
+        width: 34px;
+        height: 34px;
+        border: none;
+        background: #f0f0f0;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s;
+    }
+    
+    .kg-controls button:hover {
+        background: #e0e0e0;
+    }
+    
+    .kg-controls button.active {
+        background: #3a86ff;
+        color: white;
+    }
+    
+    /* 查询表单样式 */
+    .kg-query-section {
+        margin-bottom: 20px;
+    }
+    
+    .query-form {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .query-form textarea {
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        resize: vertical;
+        min-height: 100px;
+    }
+    
+    .query-form-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    /* 查询结果样式 */
+    .result-section {
+        margin-top: 20px;
+    }
+    
+    .result-query, .result-data {
+        margin-bottom: 15px;
+    }
+    
+    .result-query pre {
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+    }
+    
+    .result-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .result-table th, .result-table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+    }
+    
+    .result-table th {
+        background: #f8f9fa;
+    }
+    
+    .no-results {
+        padding: 15px;
+        text-align: center;
+        color: #6c757d;
+    }
+    
+    .loading {
+        text-align: center;
+        padding: 20px;
+        color: #6c757d;
+    }
+
+    /* 文件上传样式 */
+    .upload-area {
+        border: 2px dashed #ddd;
+        border-radius: 8px;
+        padding: 30px;
+        text-align: center;
+        margin-bottom: 20px;
+        background-color: #f8f9fa;
+        transition: all 0.3s ease;
+    }
+
+    .upload-area:hover {
+        border-color: #007bff;
+        background-color: #f0f7ff;
+    }
+
+    .upload-icon {
+        font-size: 48px;
+        color: #6c757d;
+        margin-bottom: 15px;
+    }
+
+    .upload-text {
+        margin-bottom: 15px;
+        color: #495057;
+    }
+
+    .file-input {
+        display: none;
+    }
+
+    .file-label {
+        background-color: #007bff;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: inline-block;
+        transition: background-color 0.3s ease;
+    }
+
+    .file-label:hover {
+        background-color: #0069d9;
+    }
+
+    .upload-progress {
+        margin-top: 15px;
+        display: none;
+    }
+
+    .upload-file-list {
+        margin-top: 20px;
+        text-align: left;
+    }
+
+    .upload-file-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        margin-bottom: 8px;
+    }
+
+    .file-name {
+        font-weight: 500;
+        color: #495057;
+    }
+
+    .file-size {
+        color: #6c757d;
+        font-size: 0.875rem;
+    }
+
+    .file-status {
+        font-size: 0.75rem;
+        padding: 2px 8px;
+        border-radius: 10px;
+    }
+
+    .status-uploading {
+        background-color: #cce5ff;
+        color: #004085;
+    }
+
+    .status-success {
+        background-color: #d4edda;
+        color: #155724;
+    }
+
+    .status-error {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+
+    /* 图谱编辑模式样式 */
+    .edit-mode-controls {
+        position: absolute;
+        top: 15px;
+        left: 15px;
+        z-index: 9;
+        background: rgba(255,255,255,0.9);
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .edit-mode-toggle {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .edit-mode-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .edit-mode-btn {
+        display: flex;
+        align-items: center;
+        background: #f8f9fa;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 5px 10px;
+        cursor: pointer;
+        font-size: 0.875rem;
+    }
+
+    .edit-mode-btn:hover {
+        background: #e2e6ea;
+    }
+
+    .edit-mode-btn.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+
+    .edit-mode-icon {
+        margin-right: 5px;
+        font-size: 14px;
+    }
+
+    /* 节点/关系编辑表单 */
+    .entity-form {
+        margin-top: 15px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 15px;
+        display: none;
+    }
+
+    .entity-form.show {
+        display: block;
+    }
+
+    .entity-form-title {
+        font-size: 16px;
+        font-weight: 500;
+        margin-bottom: 10px;
+        color: #495057;
+    }
+
+    .entity-form-group {
+        margin-bottom: 12px;
+    }
+
+    .entity-form-label {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 0.875rem;
+        color: #495057;
+    }
+
+    .entity-form-input {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.875rem;
+    }
+
+    .entity-form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 15px;
+    }
+
+    /* 添加处理状态样式 */
+    .processing-steps {
+        margin: 15px 0;
+    }
+    
+    .processing-step {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+        padding: 8px;
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+    
+    .step-icon {
+        width: 30px;
+        text-align: center;
+        margin-right: 10px;
+        color: #6c757d;
+    }
+    
+    .step-text {
+        flex: 1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    /* 拖拽上传样式 */
+    .upload-area.highlight {
+        border-color: #007bff;
+        background-color: #e3f2fd;
+    }
+    
+    .upload-area.drag_over {
+        border-color: #28a745;
+        background-color: #d4edda;
+    }
+    
+    /* 实体类型标签样式 */
+    .entity-types {
+        line-height: 2;
+    }
+    
+    .entity-types .badge {
+        margin-right: 8px;
+        margin-bottom: 4px;
+    }
+    
+    /* 图谱列表加载动画 */
+    .kg-list-loading {
+        text-align: center;
+        padding: 20px;
+        color: #6c757d;
+    }
+    
+    .kg-list-loading .spinner-border {
+        width: 1.5rem;
+        height: 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<!-- 确保按正确顺序加载脚本 -->
+<script src="{{ url_for('static', filename='js/neovis.js') }}"></script>
+<script>
+    // 检查NeoVis是否加载成功
+    window.addEventListener('load', function() {
+        if (typeof NeoVis === 'undefined') {
+            console.error("❌ NeoVis库未加载成功");
+            document.getElementById('neo4j-graph').innerHTML = 
+                '<div style="text-align:center;padding:50px;color:#d32f2f;">可视化库加载失败，请刷新页面重试</div>';
+        } else {
+            console.log("✅ NeoVis库加载成功");
+        }
+    });
+</script>
+<script src="{{ url_for('static', filename='js/kg/kg_search.js') }}"></script>
+<script src="{{ url_for('static', filename='js/kg/kg_upload.js') }}"></script>
 {% endblock %}
 
 {% block content %}
-    {{ super() }}
-
-    
-    <ol class="breadcrumb">
-        <li class="breadcrumb-item">您的位置</li>
-        <li class="breadcrumb-item active">
-          <a href='{{url_for('dashboard.dashboard_application')}}'>
-          应用程序
-          </a>
-        </li>
-        <li class="breadcrumb-item active"> 
-          <a href='{{url_for('dashboard.dashboard_kg')}}'>
-          大模型与知识图谱
-          </a>
-        </li>
-        <li class="breadcrumb-item active">图谱查询</li>
-    </ol>
-
-
-    <!-- 查询表单 -->
-    <div class="query-container">
-        <div class="query-title">知识图谱查询</div>
-        <form action="#" id="query-form">
-            <input type="text" id="query-input" placeholder="请输入查询问题" autocomplete="off">
-            <button type="submit" id="query-button">查询</button>
-        </form>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <h2 class="page-title">知识图谱探索</h2>
+            
+            <!-- 标签页导航 -->
+            <ul class="nav nav-tabs mb-4" id="kgTabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" id="explore-tab" data-toggle="tab" href="#explore" role="tab">
+                        <i class="fas fa-search mr-1"></i> 图谱探索
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="upload-tab" data-toggle="tab" href="#upload" role="tab">
+                        <i class="fas fa-cloud-upload-alt mr-1"></i> 上传创建
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="manage-tab" data-toggle="tab" href="#manage" role="tab">
+                        <i class="fas fa-cogs mr-1"></i> 图谱管理
+                    </a>
+                </li>
+            </ul>
+            
+            <!-- 标签页内容 -->
+            <div class="tab-content" id="kgTabContent">
+                <!-- 图谱探索标签页 -->
+                <div class="tab-pane fade show active" id="explore" role="tabpanel">
+                    <!-- 知识图谱信息卡片 -->
+                    <div class="card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h3>知识图谱信息</h3>
+                            <div class="form-group mb-0">
+                                <select id="kg-selector" class="form-control">
+                                    <option value="default" selected>默认知识图谱</option>
+                                    <!-- 其他知识图谱选项将动态加载 -->
+                                </select>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="kg-info">
+                                <div class="kg-stats">
+                                    <div class="kg-stat-item">
+                                        <div class="kg-stat-value" id="node-count">0</div>
+                                        <div class="kg-stat-label">节点数量</div>
+                                    </div>
+                                    <div class="kg-stat-item">
+                                        <div class="kg-stat-value" id="relation-count">0</div>
+                                        <div class="kg-stat-label">关系数量</div>
+                                    </div>
+                                    <div class="kg-stat-item">
+                                        <div class="kg-stat-value" id="entity-types-count">0</div>
+                                        <div class="kg-stat-label">实体类型数</div>
+                                    </div>
+                                </div>
+                                <div class="kg-created-time" id="kg-created-time"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 知识图谱可视化卡片 -->
+                    <div class="card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h3>知识图谱可视化</h3>
+                            <div>
+                                <button id="toggle-edit-mode" class="btn btn-outline-primary" title="切换编辑模式">
+                                    <i class="fas fa-edit"></i> 编辑模式
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="kg-visualization">
+                                <!-- 编辑模式控制 -->
+                                <div class="edit-mode-controls" id="edit-mode-controls" style="display:none;">
+                                    <div class="edit-mode-toggle">
+                                        <span class="badge badge-primary">编辑模式</span>
+                                        <button class="btn btn-sm btn-outline-danger ml-2" id="exit-edit-mode">退出</button>
+                                    </div>
+                                    <div class="edit-mode-actions">
+                                        <button class="edit-mode-btn" id="add-node-btn">
+                                            <i class="fas fa-plus-circle edit-mode-icon"></i> 添加节点
+                                        </button>
+                                        <button class="edit-mode-btn" id="add-relation-btn">
+                                            <i class="fas fa-arrows-alt-h edit-mode-icon"></i> 添加关系
+                                        </button>
+                                        <button class="edit-mode-btn" id="delete-entity-btn">
+                                            <i class="fas fa-trash edit-mode-icon"></i> 删除选中元素
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- 添加节点表单 -->
+                                    <form id="add-node-form" class="entity-form">
+                                        <div class="entity-form-title">添加新节点</div>
+                                        <div class="entity-form-group">
+                                            <label class="entity-form-label">节点名称</label>
+                                            <input type="text" class="entity-form-input" name="nodeName" required>
+                                        </div>
+                                        <div class="entity-form-group">
+                                            <label class="entity-form-label">节点类型</label>
+                                            <input type="text" class="entity-form-input" name="nodeType" value="Entity">
+                                        </div>
+                                        <div class="entity-form-group">
+                                            <label class="entity-form-label">属性 (JSON格式)</label>
+                                            <textarea class="entity-form-input" name="nodeProperties" rows="3" placeholder='{"key1":"value1","key2":"value2"}'></textarea>
+                                        </div>
+                                        <div class="entity-form-actions">
+                                            <button type="button" class="btn btn-sm btn-secondary" id="cancel-add-node">取消</button>
+                                            <button type="submit" class="btn btn-sm btn-primary">添加</button>
+                                        </div>
+                                    </form>
+                                    
+                                    <!-- 添加关系表单 -->
+                                    <form id="add-relation-form" class="entity-form">
+                                        <div class="entity-form-title">添加新关系</div>
+                                        <div class="entity-form-group">
+                                            <label class="entity-form-label">源节点ID</label>
+                                            <input type="text" class="entity-form-input" name="sourceNodeId" required>
+                                        </div>
+                                        <div class="entity-form-group">
+                                            <label class="entity-form-label">目标节点ID</label>
+                                            <input type="text" class="entity-form-input" name="targetNodeId" required>
+                                        </div>
+                                        <div class="entity-form-group">
+                                            <label class="entity-form-label">关系类型</label>
+                                            <input type="text" class="entity-form-input" name="relationType" required>
+                                        </div>
+                                        <div class="entity-form-group">
+                                            <label class="entity-form-label">属性 (JSON格式)</label>
+                                            <textarea class="entity-form-input" name="relationProperties" rows="3" placeholder='{"key1":"value1","key2":"value2"}'></textarea>
+                                        </div>
+                                        <div class="entity-form-actions">
+                                            <button type="button" class="btn btn-sm btn-secondary" id="cancel-add-relation">取消</button>
+                                            <button type="submit" class="btn btn-sm btn-primary">添加</button>
+                                        </div>
+                                    </form>
+                                </div>
+                                
+                                <div id="neo4j-graph"></div>
+                                <div id="kg-loading" class="kg-loading">
+                                    <div class="kg-spinner"></div>
+                                    <div id="loading-message">加载中...</div>
+                                </div>
+                                <!-- 控制按钮组 -->
+                                <div class="kg-controls">
+                                    <button id="zoom-in-btn" title="放大">+</button>
+                                    <button id="zoom-out-btn" title="缩小">-</button>
+                                    <button id="zoom-fit-btn" title="适应视图">⟲</button>
+                                    <button id="fullscreen-btn" title="全屏查看">⤢</button>
+                                    <button id="physics-btn" title="物理布局" class="active">🧲</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 知识图谱查询卡片 -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h3>知识图谱查询</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="kg-query-section">
+                                <form id="query-form" class="query-form">
+                                    <div class="form-group">
+                                        <label for="query-input">输入您的查询问题:</label>
+                                        <textarea id="query-input" class="form-control" placeholder="例如：哪些电影由汤姆·汉克斯主演？"></textarea>
+                                    </div>
+                                    <div class="query-form-actions">
+                                        <button type="submit" id="query-button" class="btn btn-primary">查询</button>
+                                        <button type="button" id="clear-button" class="btn btn-secondary">清除</button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div id="query-result"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 文档上传标签页 -->
+                <div class="tab-pane fade" id="upload" role="tabpanel">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h3>上传文档创建知识图谱</h3>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted mb-4">
+                                上传文档自动提取实体和关系，创建您的专属知识图谱。目前支持TXT文本文件格式。
+                            </p>
+                            <div class="upload-area" id="upload-area">
+                                <div class="upload-icon">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                </div>
+                                <div class="upload-text">
+                                    拖拽文件至此处，或点击下方按钮选择文件
+                                </div>
+                                <input type="file" id="file-input" class="file-input" accept=".txt,.pdf,.doc,.docx">
+                                <label for="file-input" class="file-label">选择文件</label>
+                                <div class="upload-progress mt-3" id="upload-progress">
+                                    <div class="progress">
+                                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                    </div>
+                                    <small class="text-muted mt-1 d-block text-center">上传进度</small>
+                                </div>
+                            </div>
+                            
+                            <div class="upload-file-list" id="upload-file-list">
+                                <!-- 上传文件列表会动态生成 -->
+                            </div>
+                            
+                            <div class="processing-status mt-4" id="processing-status" style="display:none;">
+                                <h5>文档处理中</h5>
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                                </div>
+                                <p class="text-muted mt-2">正在从文档提取知识，这可能需要几分钟时间...</p>
+                            </div>
+                            
+                            <div class="creation-result mt-4" id="creation-result" style="display:none;">
+                                <!-- 创建结果将在这里显示 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 图谱管理标签页 -->
+                <div class="tab-pane fade" id="manage" role="tabpanel">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h3>临时知识图谱管理</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <button class="btn btn-outline-primary" id="refresh-kg-list">
+                                    <i class="fas fa-sync"></i> 刷新列表
+                                </button>
+                            </div>
+                            <div id="temp-kg-list" class="kg-list">
+                                <!-- 临时知识图谱列表将动态加载 -->
+                                <div class="alert alert-info" id="no-temp-kg-msg">
+                                    暂无临时知识图谱
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+</div>
 
-    <!-- 消息容器，默认内容为空 -->
-    <div id="message-container" class="alert alert-danger" style="display: none; padding: 10px; margin: 10px 0; border-radius: 5px; border: 1px solid #f5c6cb; background-color: #f8d7da; color: #721c24;">
-        {{ message if message else '' }}
+<!-- 确认删除的模态框 -->
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认删除</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>您确定要删除这个知识图谱吗？此操作不可恢复。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">删除</button>
+            </div>
+        </div>
     </div>
+</div>
 
-    <!-- 结果容器 -->
-    <div id="result-container" style="margin-top: 20px;">
-        <div id="query-result"></div>  <!-- 显示文本查询结果 -->
-        <div id="neo4j-graph" style="width: 100%; height: 500px; display: none;  border: 1px solid lightgray; font: 22pt arial;"></div>  <!-- 显示图形化查询结果 -->
+<!-- 节点详情模态框 -->
+<div class="modal fade" id="nodeDetailModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">节点详情</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>节点ID:</label>
+                            <input type="text" class="form-control" id="node-detail-id" readonly>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>节点类型:</label>
+                            <input type="text" class="form-control" id="node-detail-labels" readonly>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>节点名称:</label>
+                    <input type="text" class="form-control" id="node-detail-name">
+                </div>
+                <div class="form-group">
+                    <label>属性:</label>
+                    <div id="node-detail-properties">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>属性</th>
+                                    <th>值</th>
+                                </tr>
+                            </thead>
+                            <tbody id="node-properties-table">
+                                <!-- 属性将动态加载 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="node-relations" class="mt-4">
+                    <h6>关联关系:</h6>
+                    <ul class="list-group" id="node-relations-list">
+                        <!-- 关系将动态加载 -->
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="save-node-changes" style="display:none;">保存修改</button>
+            </div>
+        </div>
     </div>
-
-    <script src="{{ url_for('static', filename='js/neovis.js') }}"></script>
-
-    <!-- 动态注入查询URL -->
-    <script>const queryUrl = "{{ url_for('search.kg_search') }}";</script>
-
-   
-    <script src="{{ url_for('static', filename='js/kg/kg_search.js') }}"></script>
-   
-
+</div>
 {% endblock %}
