@@ -490,21 +490,72 @@ def get_kg_visualization(kg_id):
             # 返回默认图谱的可视化数据
             graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
             
-            # 获取默认图谱的部分数据用于可视化（限制数量以提高性能）
-            nodes_query = "MATCH (n) RETURN n.name as name, labels(n) as labels, properties(n) as props LIMIT 50"
-            rels_query = "MATCH (s)-[r]->(t) RETURN s.name as source, t.name as target, type(r) as type LIMIT 100"
+            # ✅ 修复：简化查询语句，避免语法错误
+            nodes_query = """
+            MATCH (n) 
+            WHERE NOT any(label IN labels(n) WHERE label STARTS WITH 'UserKG_')
+            AND n.name IS NOT NULL
+            RETURN n.name as name, labels(n) as labels, properties(n) as props 
+            LIMIT 100
+            """
             
-            nodes_result = graph.run(nodes_query).data()
-            rels_result = graph.run(rels_query).data()
+            rels_query = """
+            MATCH (s)-[r]->(t) 
+            WHERE NOT any(label IN labels(s) WHERE label STARTS WITH 'UserKG_')
+            AND NOT any(label IN labels(t) WHERE label STARTS WITH 'UserKG_')
+            AND s.name IS NOT NULL AND t.name IS NOT NULL
+            AND NOT r.kg_id IS NOT NULL
+            RETURN s.name as source, t.name as target, type(r) as type, properties(r) as props
+            LIMIT 200
+            """
+            
+            print(f"🔍 执行默认图谱节点查询...")
+            try:
+                nodes_result = graph.run(nodes_query).data()
+                print(f"📊 获取到 {len(nodes_result)} 个节点")
+            except Exception as e:
+                print(f"❌ 节点查询失败: {e}")
+                # 降级查询：获取所有节点
+                nodes_query_fallback = """
+                MATCH (n) 
+                WHERE n.name IS NOT NULL
+                AND NOT any(label IN labels(n) WHERE label STARTS WITH 'UserKG_')
+                RETURN n.name as name, labels(n) as labels, properties(n) as props 
+                LIMIT 50
+                """
+                nodes_result = graph.run(nodes_query_fallback).data()
+                print(f"📊 降级查询获取到 {len(nodes_result)} 个节点")
+            
+            print(f"🔍 执行默认图谱关系查询...")
+            try:
+                rels_result = graph.run(rels_query).data()
+                print(f"🔗 获取到 {len(rels_result)} 个关系")
+            except Exception as e:
+                print(f"❌ 关系查询失败: {e}")
+                # 降级查询：获取所有关系
+                rels_query_fallback = """
+                MATCH (s)-[r]->(t) 
+                WHERE s.name IS NOT NULL AND t.name IS NOT NULL
+                AND NOT any(label IN labels(s) WHERE label STARTS WITH 'UserKG_')
+                AND NOT any(label IN labels(t) WHERE label STARTS WITH 'UserKG_')
+                RETURN s.name as source, t.name as target, type(r) as type, properties(r) as props
+                LIMIT 100
+                """
+                rels_result = graph.run(rels_query_fallback).data()
+                print(f"🔗 降级查询获取到 {len(rels_result)} 个关系")
             
             # 格式化数据
             vis_nodes = []
             for node in nodes_result:
                 if node['name']:  # 确保节点有名称
+                    # 获取非UserKG标签作为类型
+                    node_labels = [label for label in node['labels'] if not label.startswith('UserKG_')]
+                    node_type = node_labels[0] if node_labels else 'Entity'
+                    
                     vis_nodes.append({
                         'id': node['name'],
                         'label': node['name'],
-                        'type': node['labels'][0] if node['labels'] else 'Unknown',
+                        'type': node_type,
                         'properties': node['props']
                     })
             
@@ -515,8 +566,11 @@ def get_kg_visualization(kg_id):
                         'from': rel['source'],
                         'to': rel['target'],
                         'label': rel['type'],
-                        'type': rel['type']
+                        'type': rel['type'],
+                        'properties': rel.get('props', {})
                     })
+            
+            print(f"✅ 默认图谱数据处理完成: {len(vis_nodes)} 节点, {len(vis_edges)} 关系")
             
             return jsonify({
                 'success': True,
@@ -531,6 +585,7 @@ def get_kg_visualization(kg_id):
                 'graph_type': '系统默认图谱'
             })
         else:
+            # 用户子图处理逻辑保持不变...
             # 验证用户权限
             conn = sqlite3.connect(KG_DB_PATH)
             cursor = conn.cursor()
@@ -615,43 +670,123 @@ def delete_kg(kg_id):
 # 获取子图详情API
 @bp.route('/kg/subgraph/<kg_id>', methods=['GET'])
 def get_subgraph_info_api(kg_id):
-    """获取子图详细信息"""
+    """获取子图详细信息（支持默认图谱）"""
     try:
-        user_id = session.get('user_id', 'anonymous')
-        
-        # 验证权限
-        conn = sqlite3.connect(KG_DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            'SELECT name FROM user_kgs WHERE kg_id = ? AND user_id = ?', 
-            (kg_id, user_id)
-        )
-        
-        result = cursor.fetchone()
-        if not result:
-            conn.close()
-            return jsonify({'success': False, 'message': '知识图谱不存在或无权访问'}), 404
-        
-        kg_name = result[0]
-        conn.close()
-        
-        # 获取子图信息
-        from utils.kg.graph_builder import get_subgraph_info
-        
-        subgraph_info = get_subgraph_info(kg_id)
-        
-        if subgraph_info:
-            return jsonify({
-                'success': True,
-                'kg_id': kg_id,
-                'name': kg_name,
-                **subgraph_info
-            })
+        if kg_id == 'default':
+            # ✅ 处理默认图谱的统计
+            graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
+            
+            try:
+                # ✅ 修复：简化查询语句
+                node_query = """
+                MATCH (n) 
+                WHERE NOT any(label IN labels(n) WHERE label STARTS WITH 'UserKG_')
+                RETURN count(n) as node_count, 
+                       collect(DISTINCT [label IN labels(n) WHERE NOT label STARTS WITH 'UserKG_'][0]) as node_types
+                """
+                
+                # ✅ 修复：简化关系查询
+                rel_query = """
+                MATCH ()-[r]->() 
+                WHERE NOT r.kg_id IS NOT NULL
+                RETURN count(r) as relation_count, 
+                       collect(DISTINCT type(r)) as relation_types
+                """
+                
+                print(f"🔍 执行默认图谱统计查询...")
+                
+                try:
+                    node_result = graph.run(node_query).data()
+                    print(f"📊 节点统计查询成功")
+                except Exception as e:
+                    print(f"❌ 节点统计查询失败: {e}")
+                    # 降级查询
+                    node_query_fallback = """
+                    MATCH (n) 
+                    WHERE n.name IS NOT NULL
+                    RETURN count(n) as node_count, 
+                           collect(DISTINCT labels(n)[0]) as node_types
+                    """
+                    node_result = graph.run(node_query_fallback).data()
+                
+                try:
+                    rel_result = graph.run(rel_query).data()
+                    print(f"🔗 关系统计查询成功")
+                except Exception as e:
+                    print(f"❌ 关系统计查询失败: {e}")
+                    # 降级查询
+                    rel_query_fallback = """
+                    MATCH ()-[r]->() 
+                    RETURN count(r) as relation_count, 
+                           collect(DISTINCT type(r)) as relation_types
+                    """
+                    rel_result = graph.run(rel_query_fallback).data()
+                
+                if node_result and rel_result:
+                    # 过滤掉None值和UserKG标签
+                    node_types = [t for t in node_result[0]["node_types"] 
+                                 if t and not (isinstance(t, str) and t.startswith('UserKG_'))]
+                    relation_types = [t for t in rel_result[0]["relation_types"] if t]
+                    
+                    return jsonify({
+                        'success': True,
+                        'kg_id': 'default',
+                        'name': '系统默认图谱',
+                        'node_count': node_result[0]["node_count"],
+                        'relation_count': rel_result[0]["relation_count"],
+                        'node_types': node_types,
+                        'relation_types': relation_types,
+                        'created_time': '系统预置'
+                    })
+                else:
+                    return jsonify({
+                        'success': False,
+                        'message': '无法获取默认图谱统计数据'
+                    }), 500
+                    
+            except Exception as e:
+                print(f"❌ 获取默认图谱统计失败: {e}")
+                return jsonify({
+                    'success': False,
+                    'message': f'获取默认图谱统计失败: {str(e)}'
+                }), 500
         else:
-            return jsonify({
-                'success': False,
-                'message': '无法获取子图信息'
-            }), 500
+            # 原有的用户子图逻辑保持不变
+            user_id = session.get('user_id', 'anonymous')
+            
+            # 验证权限
+            conn = sqlite3.connect(KG_DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT name FROM user_kgs WHERE kg_id = ? AND user_id = ?', 
+                (kg_id, user_id)
+            )
+            
+            result = cursor.fetchone()
+            if not result:
+                conn.close()
+                return jsonify({'success': False, 'message': '知识图谱不存在或无权访问'}), 404
+            
+            kg_name = result[0]
+            conn.close()
+            
+            # 获取子图信息
+            from utils.kg.graph_builder import get_subgraph_info
+            
+            subgraph_info = get_subgraph_info(kg_id)
+            
+            if subgraph_info:
+                return jsonify({
+                    'success': True,
+                    'kg_id': kg_id,
+                    'name': kg_name,
+                    **subgraph_info
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': '无法获取子图信息'
+                }), 500
         
     except Exception as e:
         import traceback
@@ -932,7 +1067,7 @@ def check_neo4j_connection():
 @bp.route('/llm/query_page')
 def llm_query_page():
     """LLM查询页面路由（仅返回模板）"""
-    return render_template('templates_lk/llm_chat.html')
+    return render_template('templates_lk/llm.html')
 
 # ==================== LLM 聊天相关路由 ====================
 
