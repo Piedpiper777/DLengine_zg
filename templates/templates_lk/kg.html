@@ -513,11 +513,47 @@
 
 {% block scripts %}
 {{ super() }}
-<!-- 确保按正确顺序加载脚本 -->
+
+<!-- ✅ 首先加载 vis.js 库（NeoVis 的依赖） -->
+<script src="https://unpkg.com/vis@4.21.0/dist/vis.min.js"></script>
+<link href="https://unpkg.com/vis@4.21.0/dist/vis.min.css" rel="stylesheet" type="text/css" />
+
+<!-- ✅ 然后加载 NeoVis 库 -->
 <script src="{{ url_for('static', filename='js/neovis.js') }}"></script>
+
+<!-- ✅ 备用检查和加载 -->
 <script>
     // 检查NeoVis是否加载成功
     window.addEventListener('load', function() {
+        console.log('🔍 检查库加载状态:', {
+            'vis': typeof vis !== 'undefined',
+            'NeoVis': typeof NeoVis !== 'undefined'
+        });
+        
+        if (typeof vis === 'undefined') {
+            console.error("❌ vis.js库未加载成功");
+            // 尝试备用CDN
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/vis@4.21.0/dist/vis.min.js';
+            script.onload = function() {
+                console.log('✅ vis.js 备用CDN加载成功');
+                // 重新检查库状态
+                if (typeof checkLibraryConflicts === 'function') {
+                    setTimeout(checkLibraryConflicts, 100);
+                }
+            };
+            script.onerror = function() {
+                console.error('❌ vis.js 备用CDN也加载失败');
+            };
+            document.head.appendChild(script);
+            
+            // 同时加载 CSS
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://cdn.jsdelivr.net/npm/vis@4.21.0/dist/vis.min.css';
+            document.head.appendChild(link);
+        }
+        
         if (typeof NeoVis === 'undefined') {
             console.error("❌ NeoVis库未加载成功");
             document.getElementById('neo4j-graph').innerHTML = 
@@ -527,6 +563,8 @@
         }
     });
 </script>
+
+<!-- ✅ 最后加载您的脚本 -->
 <script src="{{ url_for('static', filename='js/kg/kg_search.js') }}"></script>
 <script src="{{ url_for('static', filename='js/kg/kg_upload.js') }}"></script>
 {% endblock %}

@@ -553,10 +553,13 @@ def get_kg_visualization(kg_id):
                     node_type = node_labels[0] if node_labels else 'Entity'
                     
                     vis_nodes.append({
-                        'id': node['name'],
-                        'label': node['name'],
-                        'type': node_type,
-                        'properties': node['props']
+                        'id': node['name'],          # ✅ 使用 name 作为 ID
+                        'label': node_type,          # ✅ 节点类型标签
+                        'type': node_type,           # ✅ 添加 type 属性
+                        'properties': {
+                            'name': node['name'],    # ✅ 确保 name 属性存在
+                            **node['props']          # ✅ 包含其他属性
+                        }
                     })
             
             vis_edges = []
@@ -565,8 +568,8 @@ def get_kg_visualization(kg_id):
                     vis_edges.append({
                         'from': rel['source'],
                         'to': rel['target'],
-                        'label': rel['type'],
-                        'type': rel['type'],
+                        'label': rel['type'],        # ✅ 关系类型
+                        'type': rel['type'],         # ✅ 添加 type 属性
                         'properties': rel.get('props', {})
                     })
             

@@ -1,3 +1,38 @@
+// 在 kg_search.js 开头添加冲突检测：
+
+function checkLibraryConflicts() {
+    console.log('🔍 检查库冲突...');
+    
+    // 检查可能冲突的库
+    const conflicts = {
+        'markdown-it': typeof markdownit !== 'undefined',
+        'NeoVis': typeof NeoVis !== 'undefined',
+        'vis': typeof vis !== 'undefined'
+    };
+    
+    console.log('📚 已加载的库:', conflicts);
+    
+    // 检查字体相关的 CSS
+    const computedStyle = window.getComputedStyle(document.body);
+    console.log('🎨 页面字体设置:', {
+        fontFamily: computedStyle.fontFamily,
+        fontSize: computedStyle.fontSize
+    });
+    
+    // 检查是否有 CSS 重写了字体
+    const graphContainer = document.getElementById('neo4j-graph');
+    if (graphContainer) {
+        const graphStyle = window.getComputedStyle(graphContainer);
+        console.log('📊 图谱容器字体设置:', {
+            fontFamily: graphStyle.fontFamily,
+            fontSize: graphStyle.fontSize
+        });
+    }
+}
+
+// 在页面加载时调用
+document.addEventListener('DOMContentLoaded', checkLibraryConflicts);
+
 // 全局变量定义 - 使用window对象来避免重复声明
 if (typeof window.contentLoaded === 'undefined') {
     window.contentLoaded = false;
@@ -86,6 +121,25 @@ function visualizeKG(kgId = 'default') {
     fetch(`/kg/visualization/${kgId}`)
         .then(response => response.json())
         .then(data => {
+            // ✅ 添加原始数据检查
+            console.log('🔍 获取到的原始可视化数据:', data);
+            
+            if (data.success && data.data) {
+                console.log('📊 原始节点数据示例:', data.data.nodes?.slice(0, 3));
+                
+                // 检查节点ID类型和属性
+                if (data.data.nodes && data.data.nodes.length > 0) {
+                    const nodeTypes = {
+                        stringIds: data.data.nodes.filter(n => typeof n.id === 'string').length,
+                        numberIds: data.data.nodes.filter(n => typeof n.id === 'number').length,
+                        withName: data.data.nodes.filter(n => n.properties && n.properties.name).length,
+                        total: data.data.nodes.length
+                    };
+                    console.log('📝 节点ID和属性统计:', nodeTypes);
+                }
+            }
+            
+            // 原有代码...
             if (loadingElement) loadingElement.style.display = 'none';
             
             if (data.success) {
@@ -122,10 +176,101 @@ function visualizeKG(kgId = 'default') {
 
 // 4. 添加渲染可视化数据的函数
 // 改进可视化错误处理
-// 修复 renderVisualization 函数，移除不支持的事件监听：
+// 修复 renderVisualization 函数，使用您可行代码的配置模式：
 
 function renderVisualization(data, kgId) {
     const graphContainer = document.getElementById('neo4j-graph');
+    
+    // ✅ 添加这一行 - 在函数顶部定义 nodeNameMap
+    const nodeNameMap = createNodeNameMap(data);
+    
+    // ✅ 添加辅助函数创建映射表
+    function createNodeNameMap(data) {
+        const map = {};
+        
+        if (data && data.nodes) {
+            console.log('📊 创建节点名称映射表，节点数:', data.nodes.length);
+            
+            data.nodes.forEach(node => {
+                // 创建多种可能的 ID 形式的映射
+                const possibleIds = [
+                    node.id,                 // 原始 ID (可能是字符串如 "石墨")
+                    String(node.id),         // 字符串形式 
+                    parseInt(node.id)        // 数字形式 (如果可转换)
+                ];
+                
+                // 获取节点名称 (优先顺序: properties.name > id本身)
+                let nodeName = null;
+                if (node.properties && node.properties.name) {
+                    nodeName = node.properties.name;
+                } else if (typeof node.id === 'string' && isNaN(parseInt(node.id))) {
+                    nodeName = node.id;
+                }
+                
+                // 只有当找到了有效名称时才创建映射
+                if (nodeName) {
+                    // 为所有可能的 ID 形式创建映射
+                    possibleIds.forEach(id => {
+                        if (id !== undefined && id !== null) {
+                            map[id] = nodeName;
+                            console.log(`📌 映射创建: ${id} -> "${nodeName}"`);
+                        }
+                    });
+                }
+            });
+            
+            console.log('📊 节点映射表创建完成:', map);
+        } else {
+            console.warn('⚠️ 无法创建节点映射表：没有可用的原始节点数据');
+        }
+        
+        return map;
+    }
+    
+    // ✅ 强制重置图谱容器的字体设置
+    console.log('🎨 重置图谱容器字体设置...');
+    const fontResetStyle = document.createElement('style');
+    fontResetStyle.id = 'kg-font-reset';
+    fontResetStyle.textContent = `
+        /* 重置知识图谱容器的字体 */
+        #neo4j-graph {
+            font-family: Arial, sans-serif !important;
+            font-size: 14px !important;
+        }
+        
+        #neo4j-graph * {
+            font-family: Arial, sans-serif !important;
+        }
+        
+        #neo4j-graph canvas {
+            font-family: Arial, sans-serif !important;
+        }
+        
+        /* 重置 vis.js 相关元素 */
+        .vis-network {
+            font-family: Arial, sans-serif !important;
+        }
+        
+        .vis-text {
+            font-family: Arial, sans-serif !important;
+            font-size: 14px !important;
+            fill: #000000 !important;
+        }
+        
+        /* 确保 SVG 文字正确显示 */
+        svg text {
+            font-family: Arial, sans-serif !important;
+            font-size: 14px !important;
+            fill: #000000 !important;
+        }
+    `;
+    
+    // 移除旧的样式，添加新的
+    const oldStyle = document.getElementById('kg-font-reset');
+    if (oldStyle) {
+        oldStyle.remove();
+    }
+    document.head.appendChild(fontResetStyle);
     
     console.log('🎨 开始渲染可视化数据:', data);
     console.log('📊 数据统计:', {
@@ -220,7 +365,10 @@ function renderVisualization(data, kgId) {
     
     console.log('✅ NeoVis库已加载，开始配置...');
     
-    // ✅ 修复：简化Cypher查询
+    // 显示容器
+    graphContainer.style.display = 'block';
+    
+    // ✅ 生成 Cypher 查询
     let cypher;
     if (kgId === 'default') {
         cypher = `
@@ -241,205 +389,126 @@ function renderVisualization(data, kgId) {
     
     console.log('🔍 生成的Cypher查询:', cypher);
     
-    // ✅ 修复 NeoVis 配置，确保文字正确显示：
-
+    // ✅ 修复：添加通配符配置
+    const labelsConfig = {
+        "Document": { 
+            caption: "source",
+            size: 50,
+            color: "#C990C0"
+        },
+        "__Entity__": { 
+            caption: "name",
+            size: 45,
+            color: "#F79767"
+        },
+        "材质": { 
+            caption: "name",
+            size: 45,
+            color: "#57C7E3"
+        },
+        "故障类型": { 
+            caption: "name",
+            size: 45,
+            color: "#F16667"
+        },
+        "设备": { 
+            caption: "name",
+            size: 45,
+            color: "#D9C8AE"
+        },
+        "离合器": { 
+            caption: "name",
+            size: 45,
+            color: "#8DCC93"
+        },
+        // ✅ 关键：添加通配符配置
+        "*": { 
+            caption: "name",
+            size: 45,
+            color: "#97C2FC"
+        }
+    };
+    
+    console.log('🏷️ 正确的 NeoVis 标签配置:', labelsConfig);
+    
+    // ✅ 更新现有的关系配置
+    const relationshipsConfig = {
+        "*": { 
+            caption: true,  // ✅ 显示关系类型作为标签
+            thickness: 3,
+            color: "#848484",   // 添加默认颜色
+            font: {            // 明确设置字体样式
+                size: 14,
+                color: '#000000',
+                face: 'Arial',
+                background: 'white',  // 添加背景色提高可见性
+                strokeWidth: 2,
+                strokeColor: '#ffffff',
+                align: 'middle'       // 居中对齐
+            }
+        }
+    };
+    
+    console.log('🔗 关系配置:', relationshipsConfig);
+    
+    // ✅ NeoVis 配置
     const config = {
-        containerId: 'neo4j-graph',
+        containerId: "neo4j-graph",
         neo4j: {
             serverUrl: "bolt://localhost:7687",
             serverUser: "neo4j",
             serverPassword: "3080neo4j"
         },
-        labels: {
-            // ✅ 修复：针对不同节点类型配置不同的显示属性
-            "Document": {
-                "caption": "source",     // Document 节点显示 source 属性
-                "size": 40,
-                "font": {
-                    "size": 18,
-                    "color": "#000000",  // 黑色字体
-                    "strokeWidth": 3,
-                    "strokeColor": "#FFFFFF"
-                }
-            },
-            "__Entity__": {
-                "caption": "name",       // Entity 节点显示 name 属性
-                "size": 35,
-                "font": {
-                    "size": 16,
-                    "color": "#000000",
-                    "strokeWidth": 3,
-                    "strokeColor": "#FFFFFF"
-                }
-            },
-            "材质": {
-                "caption": "name",
-                "size": 35,
-                "font": {
-                    "size": 16,
-                    "color": "#000000",
-                    "strokeWidth": 3,
-                    "strokeColor": "#FFFFFF"
-                }
-            },
-            "故障类型": {
-                "caption": "name",
-                "size": 35,
-                "font": {
-                    "size": 16,
-                    "color": "#000000",
-                    "strokeWidth": 3,
-                    "strokeColor": "#FFFFFF"
-                }
-            },
-            "设备": {
-                "caption": "name",
-                "size": 35,
-                "font": {
-                    "size": 16,
-                    "color": "#000000",
-                    "strokeWidth": 3,
-                    "strokeColor": "#FFFFFF"
-                }
-            },
-            "离合器": {
-                "caption": "name",
-                "size": 35,
-                "font": {
-                    "size": 16,
-                    "color": "#000000",
-                    "strokeWidth": 3,
-                    "strokeColor": "#FFFFFF"
-                }
-            },
-            // ✅ 默认配置 - 尝试多个可能的属性
-            "*": {
-                "caption": function(node) {
-                    // ✅ 动态选择显示属性
-                    if (node.properties) {
-                        return node.properties.name || 
-                               node.properties.source || 
-                               node.properties.title || 
-                               node.properties.id || 
-                               node.id;
-                    }
-                    return node.id;
-                },
-                "size": 40,
-                "font": {
-                    "size": 18,
-                    "color": "#000000",
-                    "strokeWidth": 3,
-                    "strokeColor": "#FFFFFF"
-                }
-            }
-        },
-        relationships: {
-            "*": {
-                "caption": function(edge) {
-                    // ✅ 动态选择关系显示文字
-                    return edge.type || edge.label || '';
-                },
-                "thickness": 3,
-                "font": {
-                    "size": 14,
-                    "color": "#000000",
-                    "strokeWidth": 2,
-                    "strokeColor": "#FFFFFF"
-                }
-            }
-        },
+        labels: labelsConfig,
+        relationships: relationshipsConfig,
+        initialCypher: cypher,
         visConfig: {
             nodes: {
                 shape: 'circle',
-                size: 40,
+                size: 50,
                 font: { 
                     size: 18,
                     color: '#000000',
                     strokeWidth: 3,
                     strokeColor: '#ffffff',
-                    align: 'center'
+                    face: 'Arial'
                 },
-                borderWidth: 3,
-                color: {
-                    background: '#97C2FC',
-                    border: '#2B7CE9',
-                    highlight: {
-                        background: '#7BE141',
-                        border: '#66CD00'
-                    },
-                    hover: {
-                        background: '#E6F3FF',
-                        border: '#4A90E2'
-                    }
-                },
-                shadow: {
-                    enabled: true,
-                    color: 'rgba(0,0,0,0.3)',
-                    size: 10,
-                    x: 2,
-                    y: 2
-                }
+                borderWidth: 3
             },
             edges: {
                 arrows: { 
-                    to: { 
-                        enabled: true, 
-                        scaleFactor: 1.2,
-                        type: 'arrow'
-                    } 
+                    to: { enabled: true } 
                 },
                 font: { 
-                    size: 14, 
+                    size: 14,
                     color: '#000000',
                     strokeWidth: 2,
                     strokeColor: '#ffffff',
-                    align: 'middle'
+                    face: 'Arial',
+                    background: 'white',  // 添加白色背景
+                    align: 'middle'       // 居中对齐
                 },
                 width: 3,
-                color: {
-                    color: '#848484',
-                    highlight: '#4A90E2',
-                    hover: '#4A90E2'
-                },
-                smooth: {
+                smooth: {      // 平滑曲线，给标签留出空间
                     enabled: true,
-                    type: 'dynamic'
+                    type: 'curvedCW',
+                    roundness: 0.2
                 },
-                shadow: {
-                    enabled: true,
-                    color: 'rgba(0,0,0,0.3)',
-                    size: 8,
-                    x: 2,
-                    y: 2
-                }
+                length: 200    // 适当增加边的长度，给标签腾出空间
             },
             physics: {
                 enabled: true,
                 stabilization: { 
                     enabled: true, 
                     iterations: 100
-                },
-                barnesHut: {
-                    gravitationalConstant: -8000,
-                    centralGravity: 0.3,
-                    springLength: 150,
-                    springConstant: 0.04,
-                    damping: 0.09,
-                    avoidOverlap: 1
                 }
-            },
-            interaction: {
-                hover: true,
-                zoomView: true,
-                dragNodes: true,
-                dragView: true
             }
         }
     };
     
     try {
         console.log('🔧 初始化NeoVis实例...');
+        console.log('📋 完整配置:', config);
         
         // 清空容器
         graphContainer.innerHTML = '';
@@ -447,13 +516,9 @@ function renderVisualization(data, kgId) {
         const viz = new NeoVis.default(config);
         window.currentViz = viz;
         
-        // ✅ 修复：只注册支持的事件
+        // ✅ 事件处理
         viz.registerOnEvent("completed", (e) => {
             console.log("✅ 图谱渲染完成", e);
-            console.log("📊 渲染统计:", {
-                recordCount: e.recordCount,
-                hasNetwork: !!viz.network
-            });
             
             // 隐藏加载元素
             const loadingElement = document.getElementById('kg-loading');
@@ -464,28 +529,277 @@ function renderVisualization(data, kgId) {
             if (viz.network) {
                 window.currentViz.network = viz.network;
                 
-                // ✅ 检查网络中的节点和边
-                const nodes = viz.network.body.data.nodes;
-                const edges = viz.network.body.data.edges;
-                console.log("🔍 网络数据检查:", {
-                    nodeCount: nodes ? nodes.length : 0,
-                    edgeCount: edges ? edges.length : 0,
-                    nodeIds: nodes ? nodes.getIds().slice(0, 5) : [],
-                    edgeIds: edges ? edges.getIds().slice(0, 5) : []
+                // ✅ 关键修复：手动检查并添加节点标签
+                const network = viz.network;
+                const nodes = network.body.data.nodes;
+                
+                // 获取所有节点数据
+                const nodeData = nodes.get();
+                console.log('📊 渲染完成的节点数据:', nodeData.slice(0, 3));
+                
+                // ✅ 修复：检查节点ID与原始数据ID的对应关系
+                console.log('🔍 检查节点ID对应关系:');
+                nodeData.slice(0, 5).forEach(node => {
+                    console.log(`节点ID: ${node.id}, 原始ID映射: ${nodeNameMap[node.id] || '未找到'}`);
                 });
                 
-                // 自动适应视图
-                setTimeout(() => {
-                    try {
-                        viz.network.fit({
-                            animation: {
-                                duration: 1000,
-                                easingFunction: 'easeInOutCubic'
+                // 检查是否有缺少标签的节点
+                const missingLabels = nodeData.filter(node => !node.label || node.label.trim() === '');
+                console.log(`🏷️ 检测到 ${missingLabels.length} 个节点缺少标签`);
+                
+                if (missingLabels.length > 0) {
+                    console.log('🔧 开始手动添加节点标签...');
+                    
+                    // 为每个缺少标签的节点添加标签
+                    const updatedNodes = nodeData.map((node, index) => {
+                        if (!node.label || node.label.trim() === '') {
+                            // 尝试从不同属性获取标签文字
+                            let newLabel;
+                            
+                            // ✅ 新方法：始终首先尝试索引位置匹配原始数据
+                            if (index < data.nodes.length) {
+                                const originalNode = data.nodes[index];
+                                if (originalNode.properties && originalNode.properties.name) {
+                                    newLabel = originalNode.properties.name;
+                                    console.log(`为节点 ${node.id} 添加标签 (来源:索引匹配): ${newLabel}`);
+                                }
                             }
-                        });
-                        console.log('✅ 视图自动适应完成');
-                    } catch (fitError) {
-                        console.warn('⚠️ 自动适应视图失败:', fitError);
+                            // 其他匹配方法作为后备
+                            else if (node.properties && node.properties.name) {
+                                newLabel = node.properties.name;
+                                console.log(`为节点 ${node.id} 添加标签 (来源:properties.name): ${newLabel}`);
+                            }
+                            else if (nodeNameMap[node.id]) {
+                                newLabel = nodeNameMap[node.id];
+                                console.log(`为节点 ${node.id} 添加标签 (来源:节点映射): ${newLabel}`);
+                            }
+                            else {
+                                // 在原始节点数据中查找具有相同属性的节点
+                                const matchNode = data.nodes.find(originalNode => {
+                                    // 比较所有可能的属性
+                                    if (node.properties && originalNode.properties) {
+                                        // 检查是否有相同的属性值
+                                        return Object.entries(node.properties).some(([key, value]) => 
+                                            originalNode.properties[key] === value && value);
+                                    }
+                                    return false;
+                                });
+                                
+                                if (matchNode) {
+                                    newLabel = matchNode.properties.name;
+                                    console.log(`为节点 ${node.id} 添加标签 (来源:属性匹配): ${newLabel}`);
+                                } else {
+                                    // ✅ 最后的后备方案：再次尝试找最接近的索引
+                                    const estimatedIndex = Math.min(parseInt(node.id) - 1, data.nodes.length - 1);
+                                    if (estimatedIndex >= 0 && 
+                                        data.nodes[estimatedIndex] && 
+                                        data.nodes[estimatedIndex].properties && 
+                                        data.nodes[estimatedIndex].properties.name) {
+                                        newLabel = data.nodes[estimatedIndex].properties.name;
+                                        console.log(`为节点 ${node.id} 添加标签 (来源:估计索引): ${newLabel}`);
+                                    } else {
+                                        newLabel = `节点${node.id}`;
+                                        console.log(`为节点 ${node.id} 添加标签 (来源:生成): ${newLabel}`);
+                                    }
+                                }
+                            }
+                            
+                            // 创建更新对象
+                            return {
+                                ...node,
+                                label: newLabel,
+                                font: {
+                                    size: 18,
+                                    color: '#000000',
+                                    face: 'Arial',
+                                    strokeWidth: 3,
+                                    strokeColor: '#ffffff'
+                                }
+                            };
+                        }
+                        return node;
+                    });
+                    
+                    // 更新节点数据
+                    try {
+                        nodes.update(updatedNodes);
+                        console.log('✅ 节点标签手动添加完成');
+                        
+                        // 重新绘制
+                        setTimeout(() => {
+                            viz.network.redraw();
+                            console.log('✅ 网络重新绘制完成');
+                        }, 200);
+                    } catch (updateError) {
+                        console.error('❌ 更新节点标签失败:', updateError);
+                    }
+                }
+                
+                // 修复关系标签
+                setTimeout(() => {
+                    if (viz.network) {
+                        const network = viz.network;
+                        const edges = network.body.data.edges;
+                        const edgeData = edges.get();
+                        
+                        console.log('🔍 检查边数据:', edgeData.slice(0, 3));
+                        
+                        // 检查是否有缺少标签的边
+                        const missingEdgeLabels = edgeData.filter(edge => !edge.label || edge.label.trim() === '');
+                        console.log(`🏷️ 检测到 ${missingEdgeLabels.length} 个关系缺少标签`);
+                        
+                        if (missingEdgeLabels.length > 0) {
+                            console.log('🔧 开始手动添加关系标签...');
+                            
+                            // 打印详细的诊断信息
+                            console.log('原始边数据:', data.edges);
+                            console.log('渲染后边数据:', edgeData);
+                            
+                            // ✅ 更可靠的方法：使用索引位置匹配
+                            // 如果边数量相同，直接按索引位置匹配
+                            if (data.edges.length === edgeData.length) {
+                                console.log('✅ 边数量匹配，使用索引位置映射');
+                                
+                                const updatedEdges = edgeData.map((edge, index) => {
+                                    const originalEdge = data.edges[index];
+                                    let newLabel;
+                                    
+                                    if (originalEdge) {
+                                        // 按优先级获取标签：type > label > relationship > '关系'
+                                        if (originalEdge.type) {
+                                            newLabel = originalEdge.type;
+                                        } else if (originalEdge.label) {
+                                            newLabel = originalEdge.label;
+                                        } else if (originalEdge.relationship) {
+                                            newLabel = originalEdge.relationship;
+                                        } else {
+                                            newLabel = '关系';
+                                        }
+                                        
+                                        console.log(`为关系 ${edge.from} -> ${edge.to} 设置标签 (索引匹配): ${newLabel}`);
+                                    } else {
+                                        newLabel = '关系';
+                                        console.log(`为关系 ${edge.from} -> ${edge.to} 设置默认标签: ${newLabel}`);
+                                    }
+                                    
+                                    // 创建更新对象
+                                    return {
+                                        ...edge,
+                                        label: newLabel,
+                                        font: {
+                                            size: 14,
+                                            color: '#000000',
+                                            face: 'Arial',
+                                            strokeWidth: 2,
+                                            strokeColor: '#ffffff',
+                                            background: 'white',
+                                            align: 'middle'
+                                        }
+                                    };
+                                });
+                                
+                                // 更新边数据
+                                try {
+                                    edges.update(updatedEdges);
+                                    console.log('✅ 关系标签手动添加完成');
+                                    
+                                    // 重新绘制
+                                    setTimeout(() => {
+                                        viz.network.redraw();
+                                        console.log('✅ 网络重新绘制完成');
+                                    }, 200);
+                                } catch (updateError) {
+                                    console.error('❌ 更新关系标签失败:', updateError);
+                                }
+                            } else {
+                                // 边数量不匹配时，尝试更复杂的匹配方法
+                                console.log('⚠️ 边数量不匹配，尝试通过端点节点匹配');
+                                
+                                // 首先构建节点ID映射
+                                const nodeIdMap = {};
+                                
+                                if (data.nodes && data.nodes.length > 0) {
+                                    // 获取渲染后的节点数据
+                                    const renderedNodes = network.body.data.nodes.get();
+                                    
+                                    // 如果节点数量相同，假设它们按同样顺序
+                                    if (data.nodes.length === renderedNodes.length) {
+                                        data.nodes.forEach((originalNode, index) => {
+                                            const renderedNode = renderedNodes[index];
+                                            if (originalNode && renderedNode) {
+                                                nodeIdMap[originalNode.id] = renderedNode.id;
+                                        }
+                                        });
+                                        
+                                        console.log('📊 创建节点ID映射:', nodeIdMap);
+                                    }
+                                }
+                                
+                                // 使用节点ID映射来匹配边
+                                const updatedEdges = edgeData.map(edge => {
+                                    let bestMatch = null;
+                                    
+                                    // 遍历原始边数据尝试找到匹配
+                                    for (const originalEdge of data.edges) {
+                                        // 检查是否有匹配的端点
+                                        const mappedFrom = nodeIdMap[originalEdge.from];
+                                        const mappedTo = nodeIdMap[originalEdge.to];
+                                        
+                                        if ((mappedFrom && mappedFrom === edge.from) && 
+                                            (mappedTo && mappedTo === edge.to)) {
+                                            bestMatch = originalEdge;
+                                            break;
+                                        }
+                                    }
+                                    
+                                    let newLabel;
+                                    if (bestMatch) {
+                                        if (bestMatch.type) {
+                                            newLabel = bestMatch.type;
+                                        } else if (bestMatch.label) {
+                                            newLabel = bestMatch.label;
+                                        } else if (bestMatch.relationship) {
+                                            newLabel = bestMatch.relationship;
+                                        } else {
+                                            newLabel = '关系';
+                                        }
+                                        
+                                        console.log(`为关系 ${edge.from} -> ${edge.to} 设置标签 (端点匹配): ${newLabel}`);
+                                    } else {
+                                        newLabel = '关系';
+                                        console.log(`为关系 ${edge.from} -> ${edge.to} 无法找到匹配，设置默认标签`);
+                                    }
+                                    
+                                    return {
+                                        ...edge,
+                                        label: newLabel,
+                                        font: {
+                                            size: 14,
+                                            color: '#000000',
+                                            face: 'Arial',
+                                            strokeWidth: 2,
+                                            strokeColor: '#ffffff',
+                                            background: 'white',
+                                            align: 'middle'
+                                        }
+                                    };
+                                });
+                                
+                                // 更新边数据
+                                try {
+                                    edges.update(updatedEdges);
+                                    console.log('✅ 关系标签手动添加完成');
+                                    
+                                    // 重新绘制
+                                    setTimeout(() => {
+                                        viz.network.redraw();
+                                        console.log('✅ 网络重新绘制完成');
+                                    }, 200);
+                                } catch (updateError) {
+                                    console.error('❌ 更新关系标签失败:', updateError);
+                                }
+                            }
+                        }
                     }
                 }, 1000);
             }
@@ -494,7 +808,6 @@ function renderVisualization(data, kgId) {
         viz.registerOnEvent("error", (error) => {
             console.error("❌ 可视化错误:", error);
             
-            // 隐藏加载元素
             const loadingElement = document.getElementById('kg-loading');
             if (loadingElement) {
                 loadingElement.style.display = 'none';
@@ -504,10 +817,6 @@ function renderVisualization(data, kgId) {
                 <div style="text-align:center;padding:50px;color:#d32f2f;">
                     <h4>渲染失败</h4>
                     <p>可视化渲染出现错误: ${error.message || error.toString()}</p>
-                    <details style="margin-top:10px;">
-                        <summary>错误详情</summary>
-                        <pre style="text-align:left;background:#f5f5f5;padding:10px;margin-top:10px;">${JSON.stringify(error, null, 2)}</pre>
-                    </details>
                     <button class="btn btn-primary mt-3" onclick="visualizeKG('${kgId}')">
                         重试
                     </button>
@@ -515,13 +824,13 @@ function renderVisualization(data, kgId) {
             `;
         });
         
-        console.log('🔍 执行Cypher查询:', cypher);
-        viz.renderWithCypher(cypher);
+        // ✅ 开始渲染
+        console.log('🚀 开始渲染...');
+        viz.render();
         
     } catch (e) {
         console.error("❌ 初始化可视化失败:", e);
         
-        // 隐藏加载元素
         const loadingElement = document.getElementById('kg-loading');
         if (loadingElement) {
             loadingElement.style.display = 'none';
@@ -531,10 +840,6 @@ function renderVisualization(data, kgId) {
             <div style="text-align:center;padding:50px;color:#d32f2f;">
                 <h4>初始化失败</h4>
                 <p>可视化组件初始化失败: ${e.message}</p>
-                <details style="margin-top:10px;">
-                    <summary>错误详情</summary>
-                    <pre style="text-align:left;background:#f5f5f5;padding:10px;margin-top:10px;">${e.stack}</pre>
-                </details>
                 <button class="btn btn-primary mt-3" onclick="visualizeKG('${kgId}')">
                     重试
                 </button>
@@ -712,7 +1017,7 @@ async function submitQuery(event) {
     resultContainer.innerHTML = '<div class="loading">正在查询...</div>';
     
     try {
-        // ✅ 修复：使用正确的 API 路径
+        // ✅ 修复：使用正确的 API 跨径
         const response = await fetch('/kg/search', {
             method: 'POST',
             headers: {
@@ -1419,83 +1724,6 @@ function isValidDate(dateString) {
     return !isNaN(date.getTime());
 }
 
-// 备用简化配置 - 如果动态函数不支持：
-
-const config = {
-    containerId: 'neo4j-graph',
-    neo4j: {
-        serverUrl: "bolt://localhost:7687",
-        serverUser: "neo4j",
-        serverPassword: "3080neo4j"
-    },
-    labels: {
-        "Document": {
-            "caption": "source",
-            "size": 40
-        },
-        "__Entity__": {
-            "caption": "name", 
-            "size": 35
-        },
-        "材质": {
-            "caption": "name",
-            "size": 35
-        },
-        "故障类型": {
-            "caption": "name",
-            "size": 35
-        },
-        "设备": {
-            "caption": "name", 
-            "size": 35
-        },
-        "离合器": {
-            "caption": "name",
-            "size": 35
-        },
-        "*": {
-            "caption": "name",  // 先尝试 name
-            "size": 40
-        }
-    },
-    relationships: {
-        "*": {
-            "caption": true,  // 显示关系类型
-            "thickness": 3
-        }
-    },
-    visConfig: {
-        nodes: {
-            shape: 'circle',
-            size: 40,
-            font: { 
-                size: 20,           // ✅ 更大的字体
-                color: '#000000',   // ✅ 黑色字体
-                strokeWidth: 4,     // ✅ 更粗的描边
-                strokeColor: '#ffffff',
-                align: 'center'
-            },
-            borderWidth: 3,
-            color: {
-                background: '#97C2FC',
-                border: '#2B7CE9'
-            }
-        },
-        edges: {
-            arrows: { to: { enabled: true } },
-            font: { 
-                size: 16,           // ✅ 更大的关系文字
-                color: '#000000',
-                strokeWidth: 3,
-                strokeColor: '#ffffff'
-            },
-            width: 3
-        },
-        physics: {
-            enabled: true
-        }
-    }
-};
 
 // 修改全局暴露部分，确保包含所有必要的函数：
 (function() {
@@ -1524,8 +1752,433 @@ const config = {
     window.debugVisualization = debugVisualization;
     window.debugNeo4jData = debugNeo4jData;
     window.ensureKGLoaded = ensureKGLoaded;
+    window.simpleNodeLabelFix = simpleNodeLabelFix;
     
     // ✅ 自动触发加载
     console.log("🚀 自动触发知识图谱初始化...");
     ensureKGLoaded();
 })();
+
+// 在控制台运行这个详细调试函数：
+function debugNeoVisText() {
+    console.log('🔍 详细调试 NeoVis 文字显示...');
+    
+    // 1. 检查容器
+    const container = document.getElementById('neo4j-graph');
+    console.log('📦 容器:', container);
+    
+    // 2. 检查当前配置
+    if (window.currentViz) {
+        console.log('🎯 当前 NeoVis 实例:', window.currentViz);
+        
+        // 3. 检查网络对象
+        if (window.currentViz.network) {
+            const network = window.currentViz.network;
+            console.log('🕸️ Vis Network 对象:', network);
+            
+            // 4. 获取节点数据
+            const nodes = network.getPositions();
+            console.log('📍 节点位置:', nodes);
+            
+            // 5. 检查 DOM 中的文字元素
+            const textElements = container.querySelectorAll('text, .vis-text, span');
+            console.log(`📝 找到 ${textElements.length} 个可能的文字元素`);
+            
+            textElements.forEach((el, i) => {
+                if (i < 10) {
+                    const style = getComputedStyle(el);
+                    console.log(`文字元素 ${i+1}:`, {
+                        tag: el.tagName,
+                        content: el.textContent,
+                        visible: style.display !== 'none' && style.visibility !== 'hidden',
+                        fontSize: style.fontSize,
+                        color: style.color,
+                        fontFamily: style.fontFamily,
+                        opacity: style.opacity
+                    });
+                }
+            });
+        }
+    }
+    
+    // 6. 检查数据结构
+    fetch('/kg/visualization/default')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.data.nodes) {
+                console.log('📊 前3个节点的数据结构:');
+                data.data.nodes.slice(0, 3).forEach((node, i) => {
+                    console.log(`节点 ${i+1}:`, {
+                        id: node.id,
+                        label: node.label,
+                        type: node.type,
+                        properties: node.properties,
+                        hasNameProp: !!(node.properties && node.properties.name)
+                    });
+                });
+            }
+        });
+}
+
+// 运行调试
+debugNeoVisText();
+
+// 创建一个确保有标签的新测试：
+function testWithExplicitLabels() {
+    const container = document.getElementById('neo4j-graph');
+    container.innerHTML = '';
+    
+    // 创建明确包含 label 的测试数据
+    const nodes = new vis.DataSet([
+        {
+            id: 1, 
+            label: '铜材质',        // ✅ 明确设置 label
+            color: '#97C2FC',
+            size: 50,
+            font: { size: 20, color: '#000000' }
+        },
+        {
+            id: 2, 
+            label: '橡胶材质',      // ✅ 明确设置 label
+            color: '#F79767',
+            size: 50,
+            font: { size: 20, color: '#000000' }
+        },
+        {
+            id: 3, 
+            label: '离合器设备',    // ✅ 明确设置 label
+            color: '#8DCC93',
+            size: 50,
+            font: { size: 20, color: '#000000' }
+        }
+    ]);
+    
+    const edges = new vis.DataSet([
+        {
+            from: 1, 
+            to: 3, 
+            label: '材质组成',      // ✅ 关系也有标签
+            font: { size: 16, color: '#000000' }
+        },
+        {
+            from: 2, 
+            to: 3, 
+            label: '密封材料',      // ✅ 关系也有标签
+            font: { size: 16, color: '#000000' }
+        }
+    ]);
+    
+    const data = { nodes: nodes, edges: edges };
+    
+    const options = {
+        nodes: {
+            shape: 'circle',
+            size: 50,
+            font: {
+                size: 20,
+                color: '#000000',
+                face: 'Arial',
+                strokeWidth: 2,
+                strokeColor: '#ffffff'
+            },
+            borderWidth: 3
+        },
+        edges: {
+            arrows: { to: { enabled: true } },
+            font: {
+                size: 16,
+                color: '#000000',
+                face: 'Arial',
+                strokeWidth: 1,
+                strokeColor: '#ffffff'
+            },
+            width: 2
+        },
+        physics: {
+            enabled: true,
+            stabilization: { enabled: true, iterations: 100 }
+        }
+    };
+    
+    console.log('🧪 测试明确标签配置...');
+    console.log('节点数据:', nodes.get());
+    console.log('边数据:', edges.get());
+    console.log('配置:', options);
+    
+    const network = new vis.Network(container, data, options);
+    
+    network.on('afterDrawing', function() {
+        console.log('🎨 明确标签测试绘制完成');
+        
+        setTimeout(() => {
+            // 检查Canvas上是否有文字
+            const canvas = container.querySelector('canvas');
+            if (canvas) {
+                console.log('🎨 Canvas 元素:', canvas);
+                console.log('Canvas 尺寸:', canvas.width, 'x', canvas.height);
+                
+                // 尝试从Canvas中读取像素数据来检测是否有内容
+                const ctx = canvas.getContext('2d');
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const pixels = imageData.data;
+                
+                let hasContent = false;
+                for (let i = 0; i < pixels.length; i += 4) {
+                    // 检查是否有非透明像素
+                    if (pixels[i + 3] > 0) {
+                        hasContent = true;
+                        break;
+                    }
+                }
+                
+                console.log('Canvas 内容检测:', hasContent ? '有内容' : '无内容');
+            }
+            
+            // 检查是否能通过 vis.js API 获取标签信息
+            const nodePositions = network.getPositions();
+            console.log('节点位置:', nodePositions);
+            
+            // 手动测试文字渲染
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.font = '20px Arial';
+                ctx.fillStyle = '#FF0000';
+                ctx.fillText('测试文字渲染', 50, 50);
+                console.log('✅ 手动在Canvas上绘制了红色测试文字');
+            }
+            
+        }, 2000);
+    });
+    
+    window.explicitTestNetwork = network;
+    
+    return network;
+}
+
+// 运行明确标签测试
+testWithExplicitLabels();
+
+
+
+
+// 应用简单标签修复方案
+function simpleNodeLabelFix(kgId = 'default') {
+    console.log('🔧 应用增强版标签修复方案...');
+    
+    // 获取原始数据
+    fetch('/kg/visualization/' + kgId)
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success || !data.data) {
+                console.error('❌ 获取原始数据失败');
+                return;
+            }
+            
+            const originalNodes = data.data.nodes || [];
+            console.log(`📊 获取到 ${originalNodes.length} 个原始节点`);
+            
+            if (!window.currentViz || !window.currentViz.network) {
+                console.error('❌ 找不到当前可视化实例');
+                return;
+            }
+            
+            const network = window.currentViz.network;
+            const renderedNodes = network.body.data.nodes;
+            const nodeData = renderedNodes.get();
+            
+            console.log(`🔄 渲染节点数: ${nodeData.length}, 原始节点数: ${originalNodes.length}`);
+            
+            // ✅ 创建映射表 - 不再依赖节点数量相等
+            const nodeNameMap = {};
+            
+            // 尝试为每个原始节点创建多种可能的ID映射
+            originalNodes.forEach((originalNode, index) => {
+                const name = originalNode.properties?.name || `节点${index + 1}`;
+                
+                // 使用多种可能的ID形式作为键
+                const possibleKeys = [
+                    originalNode.id,                // 原始ID
+                    String(originalNode.id),        // 字符串形式
+                    parseInt(originalNode.id),      // 数字形式
+                    index + 1,                      // 索引位置(+1)
+                    `${index + 1}`,                 // 索引字符串
+                    name                            // 名称本身
+                ];
+                
+                possibleKeys.forEach(key => {
+                    if (key !== undefined && key !== null && !isNaN(key)) {
+                        nodeNameMap[key] = name;
+                    }
+                });
+            });
+            
+            console.log('📊 创建的节点名称映射表:', nodeNameMap);
+            
+            // 更新所有渲染节点的标签
+            const updatedNodes = nodeData.map((node, index) => {
+                // 尝试多种方式找到标签
+                let label;
+                
+                // 方法1: 使用节点ID直接匹配
+                if (nodeNameMap[node.id]) {
+                    label = nodeNameMap[node.id];
+                    console.log(`✅ ID匹配: 为节点 ${node.id} 设置标签 "${label}"`);
+                }
+                // 方法2: 使用节点索引匹配
+                else if (index < originalNodes.length) {
+                    const originalNode = originalNodes[index];
+                    if (originalNode.properties && originalNode.properties.name) {
+                        label = originalNode.properties.name;
+                        console.log(`✅ 索引匹配: 为节点 ${node.id} 设置标签 "${label}"`);
+                    }
+                }
+                // 方法3: 尝试使用id字符串匹配
+                else if (nodeNameMap[String(node.id)]) {
+                    label = nodeNameMap[String(node.id)];
+                    console.log(`✅ ID字符串匹配: 为节点 ${node.id} 设置标签 "${label}"`);
+                }
+                // 方法4: 后备方案
+                else {
+                    // 尝试从原始数据中找出最可能匹配的节点
+                    let bestMatch = null;
+                    let maxScore = -1;
+                    
+                    originalNodes.forEach(originalNode => {
+                        let score = 0;
+                        
+                        // 如果ID完全匹配，高分
+                        if (originalNode.id == node.id) {
+                            score += 10;
+                        }
+                        
+                        // 如果类型匹配，加分
+                        if (originalNode.type === node.type) {
+                            score += 5;
+                        }
+                        
+                        // 如果比当前最佳匹配更好，更新
+                        if (score > maxScore) {
+                            maxScore = score;
+                            bestMatch = originalNode;
+                        }
+                    });
+                    
+                    if (bestMatch && bestMatch.properties && bestMatch.properties.name) {
+                        label = bestMatch.properties.name;
+                        console.log(`✅ 启发式匹配: 为节点 ${node.id} 设置标签 "${label}"`);
+                    } else {
+                        label = `节点${node.id}`;
+                        console.log(`⚠️ 使用默认标签: 为节点 ${node.id} 设置标签 "${label}"`);
+                    }
+                }
+                
+                // 创建更新对象
+                return {
+                    ...node,
+                    label: label,
+                    font: {
+                        size: 18,
+                        color: '#000000',
+                        face: 'Arial',
+                        strokeWidth: 3,
+                        strokeColor: '#ffffff'
+                    }
+                };
+            });
+            
+            // 更新节点
+            renderedNodes.update(updatedNodes);
+            
+            // 强制重绘
+            setTimeout(() => {
+                try {
+                    network.redraw();
+                    console.log('✅ 增强版标签修复完成');
+                    
+                    // 额外检查文本元素是否可见
+                    setTimeout(checkTextElements, 500);
+                } catch(e) {
+                    console.error('❌ 重绘失败:', e);
+                }
+            }, 300);
+        })
+        .catch(error => {
+            console.error('❌ 获取原始数据失败:', error);
+        });
+}
+
+// 辅助函数：检查文本元素是否可见
+function checkTextElements() {
+    const container = document.getElementById('neo4j-graph');
+    if (!container) return;
+    
+    const canvas = container.querySelector('canvas');
+    if (!canvas) return;
+    
+    // 尝试添加一个自定义SVG层来显示标签
+    if (!document.getElementById('kg-labels-layer')) {
+        const network = window.currentViz?.network;
+        if (!network) return;
+        
+        // 获取所有节点数据
+        const nodeData = network.body.data.nodes.get();
+        
+        // 创建SVG覆盖层
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.id = 'kg-labels-layer';
+        svg.style.position = 'absolute';
+        svg.style.top = '0';
+        svg.style.left = '0';
+        svg.style.width = '100%';
+        svg.style.height = '100%';
+        svg.style.pointerEvents = 'none';
+        svg.setAttribute('width', canvas.width);
+        svg.setAttribute('height', canvas.height);
+        
+        // 为每个节点添加文本标签
+        nodeData.forEach(node => {
+            if (!node.label) return;
+            
+            // 获取节点位置
+            const position = network.getPositions([node.id])[node.id];
+            if (!position) return;
+            
+            // 创建文本元素
+            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            text.setAttribute('x', position.x);
+            text.setAttribute('y', position.y);
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('dominant-baseline', 'middle');
+            text.setAttribute('fill', '#000000');
+            text.setAttribute('stroke', '#ffffff');
+            text.setAttribute('stroke-width', '0.5px');
+            text.setAttribute('font-family', 'Arial');
+            text.setAttribute('font-size', '14px');
+            text.textContent = node.label;
+            
+            svg.appendChild(text);
+        });
+        
+        container.appendChild(svg);
+        console.log('✅ 添加了SVG标签层');
+        
+        // 当网络移动时更新标签位置
+
+        network.on("afterDrawing", function() {
+            if (!document.getElementById('kg-labels-layer')) return;
+            
+            // 更新每个节点的标签位置
+            nodeData.forEach(node => {
+                const textElement = svg.querySelector(`text[data-node-id="${node.id}"]`);
+                if (!textElement) return;
+                
+                const position = network.getPositions([node.id])[node.id];
+                if (!position) return;
+                
+                textElement.setAttribute('x', position.x);
+                textElement.setAttribute('y', position.y);
+            });
+        });
+    }
+}
+
