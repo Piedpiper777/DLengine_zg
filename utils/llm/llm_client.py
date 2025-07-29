@@ -15,7 +15,7 @@ class LLMClient:
     
     def __init__(self):
         """初始化 LLM 客户端"""
-        self.api_key = "sk-"
+        self.api_key = "sk-45386d94f2ef4bb7ae0d8d448bfec47d"
         self.base_url = "https://api.deepseek.com"
         self.model_name = "deepseek-chat"
         

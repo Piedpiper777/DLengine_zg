@@ -309,7 +309,7 @@ def kg_search_original():
         if not cypher_query:
             return jsonify({'message': '未能生成有效的Cypher语句'}), 500
 
-        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
+        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
         
         results = graph.run(cypher_query)
         text_results = []
@@ -371,7 +371,7 @@ def kg_search():
             return jsonify({'success': False, 'message': '问题不能为空'}), 400
             
         # 连接到Neo4j
-        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
+        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
         
         # 如果是默认图谱，使用原有的查询流程
         if kg_id == 'default':
@@ -379,18 +379,37 @@ def kg_search():
             start_neo4j()
             
             # 调用NLP处理函数生成Cypher查询
-            cypher_query = process_question_for_both(question)
+            cypher_query = process_question_for_both(question)  # 现在只返回一个查询
+            
+            # 确保查询是字符串而不是元组
+            if isinstance(cypher_query, tuple):
+                cypher_query = cypher_query[0]  # 取第一个查询
+            
+            # 清理查询语句，确保只有一个查询
+            if cypher_query and ';' in cypher_query:
+                # 如果包含多个语句，只取第一个
+                cypher_query = cypher_query.split(';')[0].strip() + ';'
             
             # 如果生成了有效的Cypher查询，执行它
             if cypher_query:
-                result = perform_query(cypher_query)
-                return jsonify({
-                    'success': True,
-                    'query': cypher_query,
-                    'result': result,
-                    'message': '查询成功',
-                    'graph_type': '系统默认图谱'
-                })
+                try:
+                    print(f"🔍 执行查询: {cypher_query}")
+                    graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
+                    result = graph.run(cypher_query).data()
+                    return jsonify({
+                        'success': True,
+                        'query': cypher_query,
+                        'result': result,
+                        'message': '查询成功',
+                        'graph_type': '系统默认图谱'
+                    })
+                except Exception as query_error:
+                    print(f"❌ 查询执行失败: {query_error}")
+                    return jsonify({
+                        'success': False,
+                        'query': cypher_query,
+                        'message': f'查询执行失败: {str(query_error)}'
+                    }), 400
             else:
                 return jsonify({
                     'success': False,
@@ -488,7 +507,7 @@ def get_kg_visualization(kg_id):
         
         if kg_id == 'default':
             # 返回默认图谱的可视化数据
-            graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
+            graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
             
             # ✅ 修复：简化查询语句，避免语法错误
             nodes_query = """
@@ -677,7 +696,7 @@ def get_subgraph_info_api(kg_id):
     try:
         if kg_id == 'default':
             # ✅ 处理默认图谱的统计
-            graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
+            graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
             
             try:
                 # ✅ 修复：简化查询语句
@@ -1041,7 +1060,7 @@ def get_kg_list():
 def check_neo4j_connection():
     """检查Neo4j连接状态"""
     try:
-        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
+        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
         
         # 执行简单查询测试连接
         result = graph.run("RETURN 1 as test").data()

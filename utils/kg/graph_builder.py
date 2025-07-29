@@ -902,7 +902,7 @@ def import_kg_to_neo4j(kg: KnowledgeGraph, graph_name: str = None, kg_id: str = 
         print(f"🚀 开始导入知识图谱到Neo4j...")
         
         # 连接到Neo4j
-        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
+        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
         
         # 生成子图标签
         if kg_id:
@@ -1009,7 +1009,7 @@ def get_subgraph_for_visualization(kg_id):
         safe_kg_id = kg_id.replace('-', '_')
         subgraph_label = f"UserKG_{safe_kg_id}"
         
-        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
+        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
         
         # 获取节点
         nodes_query = f"""
@@ -1076,7 +1076,7 @@ def get_subgraph_info(kg_id):
         safe_kg_id = kg_id.replace('-', '_')
         subgraph_label = f"UserKG_{safe_kg_id}"
         
-        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
+        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
         
         # 节点统计
         node_query = f"""
@@ -1120,7 +1120,7 @@ def delete_user_kg_subgraph(kg_id):
         safe_kg_id = kg_id.replace('-', '_')
         subgraph_label = f"UserKG_{safe_kg_id}"
         
-        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
+        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
         
         # 删除关系
         rel_delete_query = f"""
@@ -1278,7 +1278,7 @@ def loadKGInfo(kg_id):
     if kg_id == 'default':
         # 返回默认图谱信息
         try:
-            graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
+            graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
             
             # 获取默认图谱统计
             node_query = """

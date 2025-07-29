@@ -244,7 +244,7 @@ def kg_search():
         if not cypher_query:
             return jsonify({'message': '未能生成有效的Cypher语句'}), 500
 
-        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"))
+        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
         
         results = graph.run(cypher_query)
         text_results = []

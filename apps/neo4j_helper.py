@@ -4,6 +4,7 @@ import logging
 import os
 from neo4j import GraphDatabase
 from utils.kg.nlp_utils import process_question_with_llm  # 替换为新方法
+from py2neo import Graph, NodeMatcher
 
 # Neo4j相关配置信息，根据实际路径修改
 NEO4J_INSTALL_PATH = "/home/zhanggu/MyDoc/DLsystem/neo4j5.26.4"
@@ -64,20 +65,54 @@ def start_neo4j():
     except subprocess.CalledProcessError as e:
         logger.error(f"启动Neo4j时出现错误: {str(e)}")
 
-
-def perform_query(query_text):
-    """执行查询并返回结果，整合了转换和执行的流程"""
-    cypher_query = process_question_with_llm(query_text)
-    if not cypher_query:
-        logger.error(f"无法将查询文本 {query_text} 转换为Cypher查询语句")
-        return None
+def get_neo4j_connection():
+    """获取Neo4j连接，使用py2neo支持的参数"""
     try:
-        driver = GraphDatabase.driver("bolt://localhost:7687", max_connection_lifetime=60 * 60,
-                                      max_connection_pool_size=50)
-        with driver.session() as session:
-            result = session.run(cypher_query)
-            results = [record for record in result]
-        return results
+        graph = Graph(
+            "bolt://localhost:7687", 
+            auth=("neo4j", "3080neo4j"), 
+            secure=False,
+            # 移除所有不支持的连接池参数
+        )
+        return graph
     except Exception as e:
-        logger.error(f"执行查询 {cypher_query} 时出现错误: {str(e)}")
-        return None
+        print(f"❌ Neo4j连接失败: {e}")
+        raise
+
+def execute_query_with_retry(cypher_query, max_retries=3):
+    """执行查询并支持重试 - 简化版本"""
+    import time
+    
+    for attempt in range(max_retries):
+        try:
+            # 使用简化的连接配置
+            graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
+            result = graph.run(cypher_query).data()
+            return result
+        except Exception as e:
+            print(f"❌ 查询执行失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # 指数退避
+            else:
+                raise e
+
+def perform_query(cypher_query):
+    """执行Cypher查询 - 简化版本"""
+    try:
+        # 确保查询只有一个语句
+        if ';' in cypher_query:
+            queries = [q.strip() for q in cypher_query.split(';') if q.strip()]
+            if len(queries) > 1:
+                print(f"⚠️ 检测到多个查询语句，只执行第一个: {queries[0]}")
+                cypher_query = queries[0]
+        
+        # 使用简化的连接方式
+        graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
+        result = graph.run(cypher_query).data()
+        
+        print(f"✅ 查询执行成功，返回 {len(result)} 条结果")
+        return result
+        
+    except Exception as e:
+        print(f"❌ 执行查询 {cypher_query} 时出现错误: {e}")
+        raise e

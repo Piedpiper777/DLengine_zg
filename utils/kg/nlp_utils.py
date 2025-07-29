@@ -2,7 +2,7 @@ from openai import OpenAI
 
 # 配置你的 DeepSeek API Key
 client = OpenAI(
-    api_key="sk-", 
+    api_key="sk-45386d94f2ef4bb7ae0d8d448bfec47d", 
     base_url="https://api.deepseek.com"
 )
 
@@ -68,19 +68,27 @@ def generate_visualization_cypher(question):
     cypher = generate_cypher_with_llm(question, "visualization")
     return cypher
 
+# 如果 nlp_utils.py 中有Neo4j连接代码，确保使用简单配置：
 def process_question_for_both(question):
     """
     同时生成答案查询和可视化查询
     :param question: 用户输入的问题
-    :return: (答案查询, 可视化查询)
+    :return: 答案查询
     """
+    # 清理查询语句，确保只返回一个查询
     answer_cypher = process_question_with_llm(question)
-    visualization_cypher = generate_visualization_cypher(question)
-    return answer_cypher, visualization_cypher
+    
+    # 确保返回的是单个查询字符串，不是多个查询
+    if isinstance(answer_cypher, str) and ';' in answer_cypher:
+        queries = [q.strip() for q in answer_cypher.split(';') if q.strip()]
+        if len(queries) > 1:
+            print(f"⚠️ 检测到多个查询，只返回第一个: {queries[0]}")
+            answer_cypher = queries[0]
+    
+    return answer_cypher
 
 # 示例用法
 if __name__ == "__main__":
     question = "齿轮的材质是什么？"
-    answer_cypher, vis_cypher = process_question_for_both(question)
+    answer_cypher = process_question_for_both(question)
     print("答案查询Cypher语句：", answer_cypher)
-    print("可视化查询Cypher语句：", vis_cypher)
