@@ -188,72 +188,99 @@
         color: white;
     }
     
-    /* 查询表单样式 */
+    /* 查询表单样式 - 文本框向按钮对齐版本 */
     .kg-query-section {
         margin-bottom: 20px;
     }
-    
+
     .query-form {
         display: flex;
         flex-direction: column;
         gap: 15px;
     }
-    
-    .query-form textarea {
-        padding: 10px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        resize: vertical;
-        min-height: 100px;
-    }
-    
-    .query-form-actions {
-        display: flex;
-        gap: 10px;
-    }
-    
-    /* 查询结果样式 */
-    .result-section {
-        margin-top: 20px;
-    }
-    
-    .result-query, .result-data {
-        margin-bottom: 15px;
-    }
-    
-    .result-query pre {
-        background: #f8f9fa;
-        padding: 10px;
-        border-radius: 4px;
-        overflow-x: auto;
-    }
-    
-    .result-table {
+
+    /* 文本框容器 - 相对定位 */
+    .query-input-wrapper {
+        position: relative;
         width: 100%;
-        border-collapse: collapse;
-    }
-    
-    .result-table th, .result-table td {
-        border: 1px solid #ddd;
-        padding: 8px;
-    }
-    
-    .result-table th {
-        background: #f8f9fa;
-    }
-    
-    .no-results {
-        padding: 15px;
-        text-align: center;
-        color: #6c757d;
-    }
-    
-    .loading {
-        text-align: center;
-        padding: 20px;
-        color: #6c757d;
+        display: flex;
     }
 
+    /* 文本框样式 - 右边框移除，为按钮让位 */
+    .query-form textarea {
+        padding: 10px 15px 10px 15px; /* 移除右侧特殊内边距 */
+        border: 1px solid #ddd;
+        border-right: none; /* 移除右边框，让按钮提供右边框 */
+        border-top-left-radius: 4px;
+        border-bottom-left-radius: 4px;
+        border-top-right-radius: 0;    /* 移除右侧圆角 */
+        border-bottom-right-radius: 0; /* 移除右侧圆角 */
+        resize: vertical;
+        min-height: 100px;
+        width: 100%;
+        box-sizing: border-box;
+        outline: none;
+        flex: 1;
+    }
+
+    /* 当文本框获得焦点时的样式 */
+    .query-form textarea:focus {
+        border-color: #007bff;
+        box-shadow: none;
+    }
+
+    /* 查询按钮 - 作为文本框的右侧部分 */
+    .query-button-inline {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 90px;
+        border: 1px solid #007bff; /* 按钮提供完整边框 */
+        border-left: 1px solid #007bff; /* 与文本框连接 */
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+        border-top-right-radius: 4px;    /* 按钮提供右侧圆角 */
+        border-bottom-right-radius: 4px;
+        background: #007bff;
+        color: white;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .query-button-inline:hover {
+        background: #0056b3;
+        border-color: #0056b3;
+    }
+
+    .query-button-inline:disabled {
+        background: #6c757d;
+        border-color: #6c757d;
+        cursor: not-allowed;
+    }
+
+    /* 当文本框获得焦点时，按钮边框也要变色 */
+    .query-form textarea:focus + .query-button-inline {
+        border-color: #007bff;
+    }
+
+    /* 清除按钮样式 */
+    .query-clear-button {
+        align-self: flex-start;
+        margin-top: 8px;
+        min-width: 80px;
+    }
+
+    /* 响应式设计 */
+    @media (max-width: 768px) {
+        .query-button-inline {
+            width: 80px;
+            font-size: 13px;
+        }
+    }
+    
     /* 文件上传样式 */
     .upload-area {
         border: 2px dashed #ddd;
@@ -570,10 +597,16 @@
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-md-12">
-            <h2 class="page-title">知识图谱探索</h2>
+<ol class="breadcrumb">
+    <li class="breadcrumb-item">您的位置</li>
+    <li class="breadcrumb-item active">
+      <a href='{{url_for('dashboard.dashboard_application')}}'>应用程序</a>
+    </li>
+    <li class="breadcrumb-item active"> 
+      <a href='{{url_for('dashboard.dashboard_kg')}}'>大模型与知识图谱</a>
+    </li>
+    <li class="breadcrumb-item active">知识图谱</li>
+</ol>
             
             <!-- 标签页导航 -->
             <ul class="nav nav-tabs mb-4" id="kgTabs" role="tablist">
@@ -734,12 +767,12 @@
                                 <form id="query-form" class="query-form">
                                     <div class="form-group">
                                         <label for="query-input">输入您的查询问题:</label>
-                                        <textarea id="query-input" class="form-control" placeholder="例如：离合器的材质有哪些？"></textarea>
                                     </div>
-                                    <div class="query-form-actions">
-                                        <button type="submit" id="query-button" class="btn btn-primary">查询</button>
-                                        <button type="button" id="clear-button" class="btn btn-secondary">清除</button>
+                                    <div class="query-input-wrapper">
+                                        <textarea id="query-input" class="form-control" placeholder="例如：离合器的材质有哪些？" rows="3"></textarea>
+                                        <button type="submit" id="query-button" class="query-button-inline">查询</button>
                                     </div>
+                                    <button type="button" id="clear-button" class="btn btn-secondary query-clear-button">清除</button>
                                 </form>
                             </div>
                             <div id="query-result"></div>

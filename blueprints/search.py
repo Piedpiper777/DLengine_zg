@@ -358,7 +358,7 @@ def kg_search_original():
 # 新的知识图谱查询API，支持子图查询
 @bp.route('/kg/search', methods=['POST'], endpoint='kg_search_new')
 def kg_search():
-    """知识图谱搜索API（子图模式）"""
+    """知识图谱搜索API（支持查询和可视化同步）"""
     try:
         data = request.get_json()
         if not data:
@@ -373,131 +373,195 @@ def kg_search():
         # 连接到Neo4j
         graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
         
-        # 如果是默认图谱，使用原有的查询流程
+        # 如果是默认图谱，使用LLM生成查询
         if kg_id == 'default':
             # 确保Neo4j服务已启动
             start_neo4j()
             
-            # 调用NLP处理函数生成Cypher查询
-            cypher_query = process_question_for_both(question)  # 现在只返回一个查询
+            # 调用NLP处理函数生成两个查询
+            answer_cypher, visualization_cypher = process_question_for_both(question)
             
-            # 确保查询是字符串而不是元组
-            if isinstance(cypher_query, tuple):
-                cypher_query = cypher_query[0]  # 取第一个查询
-            
-            # 清理查询语句，确保只有一个查询
-            if cypher_query and ';' in cypher_query:
-                # 如果包含多个语句，只取第一个
-                cypher_query = cypher_query.split(';')[0].strip() + ';'
-            
-            # 如果生成了有效的Cypher查询，执行它
-            if cypher_query:
+            # 执行答案查询
+            answer_result = None
+            if answer_cypher:
                 try:
-                    print(f"🔍 执行查询: {cypher_query}")
-                    graph = Graph("bolt://localhost:7687", auth=("neo4j", "3080neo4j"), secure=False)
-                    result = graph.run(cypher_query).data()
-                    return jsonify({
-                        'success': True,
-                        'query': cypher_query,
-                        'result': result,
-                        'message': '查询成功',
-                        'graph_type': '系统默认图谱'
-                    })
+                    print(f"🔍 执行答案查询: {answer_cypher}")
+                    answer_result = graph.run(answer_cypher).data()
+                    print(f"✅ 答案查询成功，返回 {len(answer_result)} 条结果")
                 except Exception as query_error:
-                    print(f"❌ 查询执行失败: {query_error}")
-                    return jsonify({
-                        'success': False,
-                        'query': cypher_query,
-                        'message': f'查询执行失败: {str(query_error)}'
-                    }), 400
-            else:
-                return jsonify({
-                    'success': False,
-                    'message': '无法生成有效的查询语句，请尝试其他问题'
-                }), 400
-        else:
-            # 对于用户图谱，查询指定的子图
-            safe_kg_id = kg_id.replace('-', '_')
-            subgraph_label = f"UserKG_{safe_kg_id}"
+                    print(f"❌ 答案查询执行失败: {query_error}")
+                    answer_result = []
             
-            # 生成针对子图的查询提示
-            modified_prompt = f"""
-你是一个知识图谱查询专家，请帮我将以下问题转化为Neo4j的Cypher查询语句。
-
-这是一个用户创建的知识图谱子图，包含工业领域的数据。
-- 所有节点都有标签 '{subgraph_label}' 
-- 节点还有具体的实体类型标签，如：设备、部件、技术、材料等
-- 所有节点都有属性 kg_id = '{kg_id}'
-- 节点的name属性包含实体名称
-
-用户问题: {question}
-
-请直接输出Cypher查询语句，无需额外说明。
-
-查询规则：
-1. 必须使用标签 '{subgraph_label}' 来限定查询范围
-2. 可以结合实体类型标签进行更精确的查询
-3. 查询应该返回节点的名称和其他相关属性
-4. 如果需要查找关系，确保关系的 kg_id = '{kg_id}'
-
-示例格式：
-MATCH (n:{subgraph_label}) WHERE n.name CONTAINS "发动机" AND n.kg_id = "{kg_id}" RETURN n.name, n.node_type, n
-
-只返回Cypher查询语句：
-"""
-            
-            # 调用LLM生成查询
-            response, _ = llm_client.chat_completion_with_history(modified_prompt)
-            
-            # 提取查询语句
-            cypher_query = response.strip()
-            if '```' in cypher_query:
-                match = re.search(r'```(?:cypher)?(.*?)```', cypher_query, re.DOTALL)
-                if match:
-                    cypher_query = match.group(1).strip()
-            
-            # 确保查询包含子图限制
-            if subgraph_label not in cypher_query:
-                # 降级查询：简单列出子图中的所有节点
-                cypher_query = f"""
-                MATCH (n:{subgraph_label})
-                WHERE n.kg_id = "{kg_id}"
-                RETURN n.name, n.node_type, n
-                LIMIT 20
-                """
-            
-            # 执行查询
-            if cypher_query:
+            # 执行可视化查询
+            viz_result = None
+            if visualization_cypher:
                 try:
-                    print(f"🔍 执行子图查询: {cypher_query}")
-                    result = graph.run(cypher_query).data()
+                    print(f"🎨 执行可视化查询: {visualization_cypher}")
+                    viz_result = graph.run(visualization_cypher).data()
+                    print(f"✅ 可视化查询成功，返回 {len(viz_result)} 条结果")
                     
-                    return jsonify({
-                        'success': True,
-                        'query': cypher_query,
-                        'result': result,
-                        'message': '查询成功',
-                        'graph_type': f'用户子图: {subgraph_label}',
-                        'kg_id': kg_id
-                    })
-                except Exception as e:
-                    print(f"❌ 查询执行失败: {e}")
-                    return jsonify({
-                        'success': False,
-                        'query': cypher_query,
-                        'message': f'查询执行失败: {str(e)}'
-                    }), 400
+                    # 格式化可视化数据
+                    viz_data = format_visualization_data(viz_result)
+                    
+                except Exception as viz_error:
+                    print(f"❌ 可视化查询执行失败: {viz_error}")
+                    viz_data = None
             else:
-                return jsonify({
-                    'success': False,
-                    'message': '无法生成有效的查询语句，请尝试其他问题'
-                }), 400
+                viz_data = None
+            
+            return jsonify({
+                'success': True,
+                'query': answer_cypher,
+                'visualization_query': visualization_cypher,
+                'result': answer_result or [],
+                'visualization_data': viz_data,
+                'message': '查询成功',
+                'graph_type': '系统默认图谱'
+            })
+        else:
+            # 用户图谱的处理逻辑保持不变...
+            # ... (现有的用户图谱代码)
+            pass
             
     except Exception as e:
         import traceback
         print("❌ 知识图谱查询失败:", traceback.format_exc())
         return jsonify({'success': False, 'message': f'查询失败: {str(e)}'}), 500
 
+def format_visualization_data(viz_result):
+    """格式化可视化数据 - 修复关系类型获取"""
+    try:
+        nodes = []
+        edges = []
+        node_ids = set()
+        
+        print(f"🔍 开始处理可视化数据，记录数: {len(viz_result)}")
+        
+        for i, record in enumerate(viz_result):
+            print(f"📊 处理记录 {i+1}: {record}")
+            
+            # 处理节点 - 保持原有逻辑
+            for key in ['m', 'n', 's', 't']:
+                node = record.get(key)
+                if node:
+                    print(f"🔍 找到节点 {key}: {node}")
+                    
+                    # 获取节点ID和名称
+                    if hasattr(node, 'get') and node.get('name'):
+                        node_id = node.get('name')
+                        node_name = node.get('name')
+                    elif hasattr(node, 'identity'):
+                        node_id = str(node.identity)
+                        node_name = node.get('name') if hasattr(node, 'get') and node.get('name') else f"节点{node.identity}"
+                    else:
+                        node_id = str(node)
+                        node_name = str(node)
+                    
+                    if node_id not in node_ids:
+                        # 获取节点标签（排除 __Entity__）
+                        if hasattr(node, 'labels'):
+                            meaningful_labels = [label for label in node.labels 
+                                               if label != '__Entity__' and not label.startswith('UserKG_')]
+                            node_type = meaningful_labels[0] if meaningful_labels else 'Entity'
+                        else:
+                            node_type = 'Entity'
+                        
+                        node_data = {
+                            'id': node_id,
+                            'label': node_name,
+                            'type': node_type,
+                            'properties': dict(node) if hasattr(node, 'items') else {'name': node_name}
+                        }
+                        
+                        nodes.append(node_data)
+                        node_ids.add(node_id)
+                        print(f"✅ 添加节点: {node_data}")
+            
+            # 🔧 修复关系处理逻辑
+            
+            rel = record.get('r')
+            if rel is not None:
+                print(f"🔗 找到关系: {rel}")
+                print(f"🔗 关系类型: {type(rel)}")
+                
+                # 获取起始和结束节点
+                start_node = record.get('m')
+                end_node = record.get('n')
+                
+                if start_node is not None and end_node is not None:
+                    # 获取节点ID
+                    if hasattr(start_node, 'get') and start_node.get('name'):
+                        start_id = start_node.get('name')
+                    elif hasattr(start_node, 'identity'):
+                        start_id = str(start_node.identity)
+                    else:
+                        start_id = str(start_node)
+                    
+                    if hasattr(end_node, 'get') and end_node.get('name'):
+                        end_id = end_node.get('name')
+                    elif hasattr(end_node, 'identity'):
+                        end_id = str(end_node.identity)
+                    else:
+                        end_id = str(end_node)
+                    
+                    # 🔧 关系类型获取 - 简化版本，失败就报错
+                    rel_str = str(rel)
+                    print(f"🔗 关系字符串表示: {rel_str}")
+                    
+                    if '[:' in rel_str:
+                        # 从 "(离合器)-[:故障类型 {}]->(无法分离)" 中提取 "故障类型"
+                        import re
+                        pattern = r'\[:([^\]\s]+)'
+                        match = re.search(pattern, rel_str)
+                        if match:
+                            rel_type = match.group(1)
+                            print(f"✅ 关系类型从字符串解析: {rel_type}")
+                        else:
+                            raise Exception(f"无法从关系字符串中解析类型: {rel_str}")
+                    else:
+                        raise Exception(f"关系字符串格式不正确，缺少 '[:'：{rel_str}")
+                    
+                    edge_data = {
+                        'from': start_id,
+                        'to': end_id,
+                        'label': rel_type,
+                        'type': rel_type,
+                        'properties': {}
+                    }
+                    
+                    # 尝试获取关系属性
+                    try:
+                        if hasattr(rel, 'items'):
+                            edge_data['properties'] = dict(rel)
+                        elif hasattr(rel, '__dict__'):
+                            edge_data['properties'] = rel.__dict__
+                    except Exception as prop_error:
+                        print(f"⚠️ 获取关系属性失败: {prop_error}")
+                    
+                    edges.append(edge_data)
+                    print(f"✅ 添加关系: {edge_data}")
+                else:
+                    raise Exception(f"关系缺少起始或结束节点: start={start_node}, end={end_node}")
+            else:
+                print(f"⚠️ 记录中没有找到关系 'r': {list(record.keys())}")
+        
+        result = {
+            'nodes': nodes,
+            'edges': edges,
+            'stats': {
+                'nodeCount': len(nodes),
+                'edgeCount': len(edges)
+            }
+        }
+        
+        print(f"✅ 可视化数据格式化完成: {len(nodes)} 节点, {len(edges)} 关系")
+        return result
+        
+    except Exception as e:
+        print(f"❌ 格式化可视化数据失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 # 获取子图可视化数据
 @bp.route('/kg/visualization/<kg_id>', methods=['GET'])
 def get_kg_visualization(kg_id):

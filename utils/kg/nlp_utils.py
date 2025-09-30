@@ -73,19 +73,32 @@ def process_question_for_both(question):
     """
     同时生成答案查询和可视化查询
     :param question: 用户输入的问题
-    :return: 答案查询
+    :return: (答案查询, 可视化查询)
     """
-    # 清理查询语句，确保只返回一个查询
+    # 生成答案查询
     answer_cypher = process_question_with_llm(question)
     
-    # 确保返回的是单个查询字符串，不是多个查询
+    # 清理答案查询，确保只有一个查询
     if isinstance(answer_cypher, str) and ';' in answer_cypher:
         queries = [q.strip() for q in answer_cypher.split(';') if q.strip()]
         if len(queries) > 1:
             print(f"⚠️ 检测到多个查询，只返回第一个: {queries[0]}")
             answer_cypher = queries[0]
     
-    return answer_cypher
+    # 生成可视化查询
+    visualization_cypher = generate_visualization_cypher(question)
+    
+    # 清理可视化查询
+    if isinstance(visualization_cypher, str) and ';' in visualization_cypher:
+        queries = [q.strip() for q in visualization_cypher.split(';') if q.strip()]
+        if len(queries) > 1:
+            print(f"⚠️ 可视化查询检测到多个语句，只返回第一个: {queries[0]}")
+            visualization_cypher = queries[0]
+    
+    print(f"📊 生成答案查询: {answer_cypher}")
+    print(f"🎨 生成可视化查询: {visualization_cypher}")
+    
+    return answer_cypher, visualization_cypher
 
 # 示例用法
 if __name__ == "__main__":

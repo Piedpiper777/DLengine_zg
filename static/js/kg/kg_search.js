@@ -571,6 +571,9 @@ function setupQueryHandlers() {
 /**
  * 提交查询
  */
+/**
+ * 提交查询并同步更新可视化
+ */
 async function submitQuery() {
   const queryInput = document.getElementById('query-input');
   const resultContainer = document.getElementById('query-result');
@@ -610,7 +613,33 @@ async function submitQuery() {
     }
     
     if (data.success) {
+      // 显示查询结果
       displayQueryResults(data);
+      
+      // 🎯 关键：同步更新可视化
+      if (data.visualization_data && data.visualization_data.nodes && data.visualization_data.nodes.length > 0) {
+        console.log('🎨 更新可视化数据:', data.visualization_data);
+        
+        // 更新图谱可视化
+        updateVisualizationWithQueryData(data.visualization_data);
+        
+        // 显示可视化查询信息
+        if (data.visualization_query) {
+          console.log('🔍 可视化查询语句:', data.visualization_query);
+          
+          // 可选：在结果中显示可视化查询
+          const vizQueryInfo = document.createElement('div');
+          vizQueryInfo.className = 'visualization-query-info mt-3';
+          vizQueryInfo.innerHTML = `
+            <h6>可视化查询语句:</h6>
+            <pre><code>${data.visualization_query}</code></pre>
+            <small class="text-muted">图谱已同步更新 (${data.visualization_data.stats.nodeCount} 节点, ${data.visualization_data.stats.edgeCount} 关系)</small>
+          `;
+          resultContainer.appendChild(vizQueryInfo);
+        }
+      } else {
+        console.log('⚠️ 无可视化数据，保持当前图谱显示');
+      }
     } else {
       resultContainer.innerHTML = `<div class="alert alert-danger">查询失败: ${data.message}</div>`;
     }
@@ -622,6 +651,76 @@ async function submitQuery() {
       queryButton.disabled = false;
       queryButton.textContent = '查询';
     }
+  }
+}
+
+/**
+ * 用查询结果更新可视化
+ * @param {Object} vizData 可视化数据
+ */
+function updateVisualizationWithQueryData(vizData) {
+  console.log('🔄 开始更新可视化数据...');
+  
+  // 检查容器
+  const graphContainer = document.getElementById('neo4j-graph');
+  if (!graphContainer) {
+    console.error('❌ 找不到图谱容器');
+    return;
+  }
+  
+  // 使用vis.js直接渲染（不使用NeoVis）
+  if (typeof vis !== 'undefined') {
+    try {
+      // 清空现有内容
+      graphContainer.innerHTML = '';
+      
+      // 创建数据集
+      const nodes = new vis.DataSet(vizData.nodes.map(node => ({
+        ...node,
+        font: {
+          size: 18,
+          color: '#000000',
+          face: 'Arial',
+          strokeWidth: 3,
+          strokeColor: '#ffffff'
+        }
+      })));
+      
+      const edges = new vis.DataSet(vizData.edges.map(edge => ({
+        ...edge,
+        font: {
+          size: 14,
+          color: '#000000',
+          face: 'Arial',
+          strokeWidth: 2,
+          strokeColor: '#ffffff',
+          background: 'white',
+          align: 'middle'
+        }
+      })));
+      
+      const data = { nodes, edges };
+      
+      // 使用默认配置
+      const options = KGSystem.defaultOptions;
+      
+      // 创建网络
+      const network = new vis.Network(graphContainer, data, options);
+      
+      // 更新当前可视化引用
+      if (KGSystem.currentViz) {
+        KGSystem.currentViz.network = network;
+      } else {
+        KGSystem.currentViz = { network };
+      }
+      
+      console.log(`✅ 可视化更新完成: ${vizData.nodes.length} 节点, ${vizData.edges.length} 关系`);
+      
+    } catch (e) {
+      console.error('❌ 可视化更新失败:', e);
+    }
+  } else {
+    console.error('❌ vis.js 库未加载');
   }
 }
 
